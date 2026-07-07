@@ -1,0 +1,380 @@
+/* Xietiao — tema "papel y tinta" sobre terminal.css,
+   con la misma disposición de bloques que la versión TUI (ratatui). */
+
+:root {
+  --paper: #f6f1e5;
+  --ink: #23211b;
+  --ink-dim: #8b8474;
+  --ink-faint: #cec7b4;
+
+  /* Variables de terminal.css */
+  --global-font-size: 14px;
+  --global-line-height: 1.35em;
+  --background-color: var(--paper);
+  --font-color: var(--ink);
+  --invert-font-color: var(--paper);
+  --primary-color: var(--ink);
+  --secondary-color: var(--ink-dim);
+  --error-color: #7a2e2e;
+  --block-background-color: transparent;
+  --input-style: solid;
+  --page-width: 100%;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Papel: fondo cálido con un grano muy sutil. */
+body {
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.52 0 0 0 0 0.45 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  color: var(--ink);
+  font-family: var(--mono-font-stack, Menlo, Monaco, monospace);
+  user-select: none;
+  cursor: default;
+}
+
+/* Modo oscuro: tinta clara sobre papel oscuro. Todo usa las variables,
+   así que basta con invertirlas (más un grano claro para el fondo). */
+body.dark {
+  --paper: #201e19;
+  --ink: #e6e0d0;
+  --ink-dim: #8b8474;
+  --ink-faint: #45423a;
+  /* Re-mapear las variables de terminal.css: las de :root se resolvieron
+     con los valores claros y no siguen el cambio de --ink/--paper. */
+  --background-color: var(--paper);
+  --font-color: var(--ink);
+  --invert-font-color: var(--paper);
+  --primary-color: var(--ink);
+  --secondary-color: var(--ink-dim);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.82 0 0 0 0 0.72 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+body.dark .dlg { box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.5); }
+body.dark #overlay { background: rgba(0, 0, 0, 0.45); }
+
+/* --- Rejilla: idéntica a la TUI ------------------------------------------------
+   raíz    = [contenido | 1 línea de estado]
+   columnas = izquierda 55% | derecha 45%
+   izquierda = proyectos 30% / to-dos 70%
+   derecha   = (calendario | timer 16 cols) 46% / notas / progreso (bajo)     */
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 6px;
+  gap: 6px;
+}
+
+#grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  column-gap: 12px;
+  min-height: 0;
+}
+
+#col-left {
+  display: grid;
+  grid-template-rows: 30fr 70fr;
+  row-gap: 16px;
+  min-height: 0;
+}
+
+/* calendario+relojes a su contenido; notas se lleva TODO el espacio libre. */
+#col-right {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  row-gap: 16px;
+  min-height: 0;
+}
+
+/* Calendario y relojes estiran a la misma altura; el cronómetro queda
+   anclado abajo, alineado con el borde inferior del calendario. */
+#cal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  column-gap: 12px;
+  min-height: 0;
+}
+
+#clock-strip {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  row-gap: 16px;
+  min-height: 0;
+}
+
+/* --- Bloques con el título sobre el borde, como ratatui ------------------------- */
+
+.block {
+  position: relative;
+  border: 1px solid var(--ink);
+  background: transparent;
+  padding: 12px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Panel con el foco del teclado: borde doble y título en negrita, como en la TUI. */
+.block.focused { box-shadow: inset 0 0 0 1px var(--ink); }
+.block.focused > .block-title { font-weight: bold; }
+
+.block-title {
+  position: absolute;
+  top: -0.8em;
+  left: 10px;
+  background: var(--paper);
+  padding: 0 7px;
+  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Listas ---------------------------------------------------------------------- */
+
+.select-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 40px;
+}
+.select-list.grow { flex: 1; }
+
+.select-list li {
+  padding: 1px 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Selección en vídeo inverso, como en un terminal. */
+.select-list li.selected { background: var(--ink); color: var(--paper); }
+.select-list li.selected .dimmed,
+.select-list li.selected .todo-meta,
+.select-list li.selected .tag { color: var(--ink-faint); }
+
+.todo-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+li.done .todo-title { text-decoration: line-through; color: var(--ink-dim); }
+
+/* Subtareas tabuladas bajo su tarea */
+#todo-list li.sub { padding-left: 2.6em; font-size: 0.95em; }
+#todo-list li.sub::before { content: "└"; color: var(--ink-dim); }
+
+.tag, .todo-meta { font-size: 0.85em; color: var(--ink-dim); white-space: nowrap; }
+.dimmed { color: var(--ink-dim); }
+
+/* Checkboxes como [ ] / [x] */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  width: auto;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+input[type="checkbox"]::after { content: "[ ]"; }
+input[type="checkbox"]:checked::after { content: "[x]"; }
+
+/* Radios como ( ) / (•) */
+.radio-label { display: inline-flex; gap: 4px; align-items: baseline; margin-right: 12px; }
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}
+input[type="radio"]::after { content: "( )"; }
+input[type="radio"]:checked::after { content: "(•)"; }
+input[type="radio"]:disabled::after { color: var(--ink-faint); }
+
+/* --- Controles ---------------------------------------------------------------------- */
+
+.btn {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 8px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  cursor: default;
+}
+.btn:hover { background: var(--ink-faint); }
+.btn:active, .btn-primary { background: var(--ink); color: var(--paper); }
+
+input[type="text"], input[type="date"], textarea {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 2px 6px;
+  min-width: 0;
+}
+input::placeholder { color: var(--ink-dim); }
+input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px; }
+
+.add-row { display: flex; gap: 5px; align-items: center; flex: none; flex-wrap: wrap; }
+.add-row input[type="text"] { flex: 1; }
+.add-row.right { justify-content: flex-end; }
+.add-row.center { justify-content: center; }
+
+/* --- Calendario ------------------------------------------------------------------------ */
+
+.cal-nav { justify-content: flex-start; }
+.cal-nav #cal-assign { margin-left: auto; }
+
+#cal-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  flex: none;
+}
+#cal-grid th {
+  font-weight: normal;
+  color: var(--ink-dim);
+  border-bottom: 1px solid var(--ink);
+  padding: 0 0 2px;
+  font-size: 0.85em;
+}
+#cal-grid td {
+  text-align: center;
+  padding: 2px 0 1px;
+  font-size: 0.95em;
+}
+#cal-grid td:not(.empty):hover { background: var(--ink-faint); }
+#cal-grid td.today { font-weight: bold; text-decoration: underline; }
+#cal-grid td.selected { background: var(--ink); color: var(--paper); }
+#cal-grid td .count {
+  display: block;
+  font-size: 0.6em;
+  line-height: 1;
+  color: var(--ink-dim);
+  min-height: 0.7em;
+}
+#cal-grid td.selected .count { color: var(--ink-faint); }
+
+/* Agenda del día: popup */
+#agenda-list li { padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#agenda-list li.done { text-decoration: line-through; color: var(--ink-dim); }
+#agenda-list li:hover { background: var(--ink-faint); }
+
+/* --- Tira de relojes --------------------------------------------------------------------- */
+
+.clock { align-items: center; gap: 6px; padding: 14px 8px 10px; flex: none; }
+.clock-value { font-weight: bold; font-size: 17px; text-align: center; }
+.clock-value.running { text-decoration: underline; }
+.clock-sub { font-size: 0.75em; text-align: center; min-height: 1em; }
+.clock-btns { display: flex; gap: 4px; justify-content: center; }
+.clock-btns .btn { font-size: 11px; padding: 2px 6px; }
+#timer-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Notas ---------------------------------------------------------------------------------- */
+
+#blk-notes { min-height: 120px; }
+#notes-text {
+  flex: 1;
+  resize: none;
+  border: none;
+  padding: 2px 0;
+  background: transparent;
+  min-height: 60px;
+  user-select: text;
+  cursor: text;
+}
+#notes-text:focus { outline: none; }
+
+/* --- Barra de progreso ---------------------------------------------------------------------------- */
+
+#blk-progress { padding-bottom: 8px; }
+#progress-track {
+  border: 1px solid var(--ink);
+  height: 16px;
+  padding: 2px;
+  flex: none;
+}
+#progress-fill {
+  background: var(--ink);
+  height: 100%;
+  width: 0;
+  transition: width 0.2s ease;
+}
+
+/* --- Línea de estado ------------------------------------------------------------------------------ */
+
+#statusline {
+  flex: none;
+  display: flex;
+  gap: 12px;
+  color: var(--ink-dim);
+  font-size: 0.9em;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+#statusbar { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+#menu-trash, #menu-dark { color: var(--ink-dim); text-decoration: underline; }
+#menu-trash:hover, #menu-dark:hover { color: var(--ink); background: none; }
+
+/* --- Diálogos ---------------------------------------------------------------------------------------- */
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(35, 33, 27, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#overlay.hidden { display: none; }
+
+.dlg {
+  min-width: 380px;
+  max-width: 560px;
+  background: var(--paper);
+  box-shadow: 5px 5px 0 rgba(35, 33, 27, 0.35);
+  padding: 14px 12px 10px;
+  gap: 8px;
+}
+.dlg.hidden { display: none; }
+.dlg .select-list { max-height: 260px; }
+.dlg input[type="text"] { width: 100%; }
+.dlg p { margin: 4px 0; }
+
+.trash-item-buttons { margin-left: auto; display: flex; gap: 4px; }
+
+#dlg-help { max-width: 640px; }
+.help-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 16px;
+  font-size: 0.9em;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 2px 4px;
+}
+.help-grid b { white-space: nowrap; }
+.help-grid span { color: var(--ink-dim); }
+
+input, textarea { user-select: text; }

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xietiao</title>
+  <link rel="stylesheet" href="assets/terminal.css" />
+  <link rel="stylesheet" href="xietiao.css" />
+</head>
+<body>
+
+  <main id="app">
+    <!-- Misma disposición que la TUI: izquierda 55% (proyectos/to-dos),
+         derecha 45% (calendario+timer, notas, barra de progreso), estado abajo. -->
+    <div id="grid">
+
+      <div id="col-left">
+
+        <!-- proyectos (30%) -->
+        <section class="block" id="blk-projects">
+          <span class="block-title">proyectos</span>
+          <ul id="project-list" class="select-list grow"></ul>
+          <div class="add-row">
+            <input id="project-new" type="text" placeholder="nuevo proyecto…" />
+            <button class="btn" id="project-add">añadir</button>
+            <button class="btn" id="project-rename">renombrar</button>
+            <button class="btn" id="project-delete">borrar</button>
+            <button class="btn" id="project-up">▲</button>
+            <button class="btn" id="project-down">▼</button>
+          </div>
+        </section>
+
+        <!-- to-dos (70%) -->
+        <section class="block" id="blk-todos">
+          <span class="block-title" id="todos-title">to-dos</span>
+          <div class="add-row">
+            <input id="todo-new" type="text" placeholder="nueva tarea…  (#tags admitidos)" />
+            <input id="todo-search" type="text" placeholder="buscar / #tag" />
+          </div>
+          <ul id="todo-list" class="select-list grow"></ul>
+          <div class="add-row" id="todo-toolbar">
+            <button class="btn" id="todo-priority" title="prioridad cíclica: ! → !! → !!!">prio</button>
+            <button class="btn" id="todo-recur" title="repetir: diaria → semanal → mensual">↻</button>
+            <input type="date" id="todo-date" title="asignar fecha" />
+            <button class="btn" id="todo-nodate" title="quitar fecha">sin fecha</button>
+            <button class="btn" id="todo-subtasks">subtareas</button>
+            <button class="btn" id="todo-move">mover a…</button>
+            <button class="btn" id="todo-edit">editar</button>
+            <button class="btn" id="todo-delete">borrar</button>
+            <button class="btn" id="todo-up">▲</button>
+            <button class="btn" id="todo-down">▼</button>
+          </div>
+        </section>
+
+      </div>
+
+      <div id="col-right">
+
+        <div id="cal-row">
+          <!-- calendario -->
+          <section class="block" id="blk-calendar">
+            <span class="block-title" id="cal-title">calendario</span>
+            <div class="add-row cal-nav">
+              <button class="btn" id="cal-prev">◀</button>
+              <button class="btn" id="cal-today">hoy</button>
+              <button class="btn" id="cal-next">▶</button>
+              <button class="btn" id="cal-assign" title="asigna el día seleccionado a la tarea seleccionada">asignar a tarea</button>
+            </div>
+            <table id="cal-grid"></table>
+          </section>
+
+          <!-- tira de relojes (como la columna de 16 celdas de la TUI) -->
+          <div id="clock-strip">
+            <section class="block clock">
+              <span class="block-title">pomodoro</span>
+              <div class="clock-value" id="timer-display">25:00</div>
+              <div class="clock-sub dimmed" id="pomo-sub">foco · 0 hoy</div>
+              <div class="clock-btns">
+                <button class="btn" id="timer-toggle" title="iniciar/pausar">▶</button>
+                <button class="btn" id="timer-reset" title="reiniciar">↺</button>
+                <button class="btn" id="timer-mode-btn" title="cambiar foco/descanso">modo</button>
+              </div>
+              <div class="clock-btns">
+                <button class="btn" id="timer-link-btn" title="vincular la tarea seleccionada">vincular</button>
+              </div>
+              <div class="clock-sub dimmed" id="timer-link"></div>
+            </section>
+            <section class="block clock">
+              <span class="block-title">reloj</span>
+              <div class="clock-value" id="clock-display">--:--:--</div>
+            </section>
+            <section class="block clock">
+              <span class="block-title">cronómetro</span>
+              <div class="clock-value" id="stopwatch-display">00:00</div>
+              <div class="clock-btns">
+                <button class="btn" id="stopwatch-toggle" title="iniciar/parar">▶</button>
+                <button class="btn" id="stopwatch-reset" title="reiniciar">↺</button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- notas -->
+        <section class="block" id="blk-notes">
+          <span class="block-title">notas</span>
+          <div class="add-row">
+            <label class="radio-label"><input type="radio" id="notes-general" name="notes-scope" checked /> generales</label>
+            <label class="radio-label"><input type="radio" id="notes-project" name="notes-scope" /> <span id="notes-project-label">del proyecto</span></label>
+          </div>
+          <textarea id="notes-text" spellcheck="false"></textarea>
+        </section>
+
+        <!-- barra de progreso -->
+        <section class="block" id="blk-progress">
+          <span class="block-title" id="progress-title">barra de progreso</span>
+          <div id="progress-track"><div id="progress-fill"></div></div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- línea de estado -->
+    <div id="statusline">
+      <span id="statusbar">Listo.</span>
+      <a href="#" id="menu-dark">modo-oscuro</a>
+      <a href="#" id="menu-trash">papelera</a>
+    </div>
+  </main>
+
+  <!-- Overlay de diálogos -->
+  <div id="overlay" class="hidden">
+
+    <div class="dlg block hidden" id="dlg-subtasks">
+      <span class="block-title" id="subtasks-title">subtareas</span>
+      <ul id="subtask-list" class="select-list"></ul>
+      <div class="add-row">
+        <input id="subtask-new" type="text" placeholder="nueva subtarea…" />
+        <button class="btn" id="subtask-add">añadir</button>
+      </div>
+      <div class="add-row right">
+        <button class="btn" data-close>cerrar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-trash">
+      <span class="block-title">papelera</span>
+      <ul id="trash-list" class="select-list"></ul>
+      <div class="add-row right">
+        <button class="btn" data-close>cerrar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-move">
+      <span class="block-title">mover tarea a…</span>
+      <ul id="move-list" class="select-list"></ul>
+      <div class="add-row right">
+        <button class="btn" data-close>cancelar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-input">
+      <span class="block-title" id="input-title">editar</span>
+      <input id="input-text" type="text" />
+      <div class="add-row right">
+        <button class="btn" data-close>cancelar</button>
+        <button class="btn btn-primary" id="input-ok">aceptar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-confirm">
+      <span class="block-title">confirmar</span>
+      <p id="confirm-text">¿Seguro?</p>
+      <div class="add-row right">
+        <button class="btn" data-close>cancelar</button>
+        <button class="btn btn-primary" id="confirm-ok">aceptar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-agenda">
+      <span class="block-title" id="agenda-title">agenda</span>
+      <ul id="agenda-list" class="select-list"></ul>
+      <div class="add-row right">
+        <button class="btn btn-primary" data-close>cerrar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-help">
+      <span class="block-title">ayuda · atajos</span>
+      <div class="help-grid">
+        <b>Tab / Shift+Tab</b><span>cambiar de panel</span>
+        <b>↑ ↓ / j k</b><span>navegar lista (± semana en calendario)</span>
+        <b>← → / h l</b><span>mover día en el calendario</span>
+        <b>a / n</b><span>añadir proyecto o tarea (#tags en tareas)</span>
+        <b>e</b><span>renombrar proyecto/tarea · editar notas</span>
+        <b>d</b><span>borrar (a la papelera, con confirmación)</span>
+        <b>Espacio / Enter</b><span>marcar tarea · play relojes · editar notas</span>
+        <b>f</b><span>asignar tarea al día seleccionado</span>
+        <b>p / R</b><span>prioridad · recurrencia de la tarea</span>
+        <b>s</b><span>editar subtareas de la tarea</span>
+        <b>m</b><span>mover la tarea a otro proyecto</span>
+        <b>v</b><span>vincular pomodoro a la tarea</span>
+        <b>J / K</b><span>mover el elemento abajo / arriba</span>
+        <b>/</b><span>buscar / filtrar (admite #tag)</span>
+        <b>g</b><span>notas del proyecto ↔ generales</span>
+        <b>t</b><span>ir a hoy en el calendario</span>
+        <b>x</b><span>papelera</span>
+        <b>r / b</b><span>reset · foco↔break (relojes)</span>
+        <b>?</b><span>mostrar esta ayuda</span>
+        <b>q</b><span>salir</span>
+      </div>
+      <div class="add-row center">
+        <button class="btn btn-primary" data-close>cerrar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-alert">
+      <span class="block-title">aviso</span>
+      <p id="alert-text">¡Foco completado!</p>
+      <div class="add-row center">
+        <button class="btn btn-primary" data-close>vale</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
