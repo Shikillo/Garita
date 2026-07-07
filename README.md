@@ -2,6 +2,8 @@
 
 Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el dashboard TUI de productividad), construida con **Tauri 2** y una interfaz "papel y tinta" basada en [terminal.css](https://terminalcss.xyz/), que replica **la misma disposición de bloques que la versión de terminal**: proyectos y to-dos a la izquierda, calendario con la tira de relojes (pomodoro/reloj/cronómetro), notas y barra de progreso a la derecha, y línea de estado abajo.
 
+<img width="1392" height="952" alt="xie" src="https://github.com/user-attachments/assets/8c66b441-102c-4de4-be80-ff3af04eb8bc" />
+
 ## Qué incluye
 
 - **Proyectos** — crear, renombrar, reordenar y borrar (a la papelera).
