@@ -1,6 +1,6 @@
 [package]
 name = "xietiao-desktop"
-version = "0.2.0"
+version = "0.2.5"
 edition = "2021"
 description = "Xietiao — dashboard de productividad de escritorio (Tauri + system.css)"
 license = "MIT"

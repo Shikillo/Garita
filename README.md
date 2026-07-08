@@ -12,6 +12,12 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
 - **Notas** — generales o por proyecto, con autoguardado.
 - **Pomodoro** — temporizador 25/5 con vinculación a tareas y registro de focos; reloj y cronómetro.
 - **Papelera** — restaurar o purgar proyectos y tareas borradas.
+- **Escanear papel** — el enlace «escanear» de la línea de estado captura con la
+  cámara una lista escrita con casillas `- [ ]` y añade las líneas con casilla
+  vacía como to-dos del proyecto seleccionado (las `- [x]` se ignoran), previa
+  lista de confirmación editable. El OCR
+  ([tesseract.js](https://tesseract.projectnaptha.com/), español) corre en local
+  y sin conexión; funciona mejor con texto impreso que manuscrito.
 - **Modo oscuro** — tinta clara sobre papel oscuro, se recuerda entre sesiones.
 - **Todoist** — sincronización: las tareas pendientes se envían a Todoist
   (proyecto homónimo, fecha, prioridad y `#tags`), cada una una sola vez, y las
@@ -30,18 +36,19 @@ Puedes alternar entre la TUI y la app de escritorio con los mismos datos.
 
 > Nota: si tienes ambas abiertas a la vez, la última en guardar gana.
 
-> Nota: la versión de escritorio añade dos campos al modelo (`todoist_token` y el
-> `todoist_id` de cada tarea). La TUI los ignora al cargar, pero **los descarta al
-> guardar**: si usas la integración con Todoist y también la TUI, conviene portar
-> esos dos campos al `model.rs` de la TUI para no perder el token ni duplicar
-> tareas al re-exportar.
+> Nota: la integración con Todoist añade dos campos al modelo (`todoist_token` y
+> el `todoist_id` de cada tarea). La TUI los incluye desde su versión 0.2.0; si
+> usas una TUI anterior junto a esta app, al guardar los descartaría (perderías
+> el token y se duplicarían tareas al re-exportar), así que actualízala.
 
 ## Arquitectura
 
 - `src-tauri/` — backend Rust. El estado autoritativo (`Store`) vive aquí; cada
   acción del frontend invoca un *command* que muta, persiste y devuelve el estado.
 - `src/` — frontend estático (HTML/CSS/JS vanilla, **sin Node ni bundler**).
-  `terminal.css` va vendorizado en `src/assets/`; el tema papel/tinta, el modo
+  `terminal.css` y el motor de OCR (tesseract.js + core WASM + modelo español,
+  en `src/assets/tesseract/`, ~9 MB) van vendorizados en `src/assets/` para que
+  la app funcione sin red; el tema papel/tinta, el modo
   oscuro y los bloques estilo ratatui (título sobre el borde) están en `src/xietiao.css`.
 - `src-tauri/icons/` — icono de la app; `icon.svg` es la fuente y de él salen
   `icon.icns` (macOS), `icon.ico` (Windows) y los PNG (Linux).

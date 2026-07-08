@@ -9,6 +9,9 @@
 </head>
 <body>
 
+  <!-- Splash de arranque: logo ASCII revelado por filas, de abajo arriba. -->
+  <div id="splash"><pre id="splash-art" aria-hidden="true"></pre></div>
+
   <main id="app">
     <!-- Misma disposición que la TUI: izquierda 55% (proyectos/to-dos),
          derecha 45% (calendario+timer, notas, barra de progreso), estado abajo. -->
@@ -125,6 +128,7 @@
       <a href="#" id="menu-dark">modo-oscuro</a>
       <a href="#" id="menu-todoist">todoist</a>
       <a href="#" id="menu-sync">sincronizar</a>
+      <a href="#" id="menu-scan">escanear</a>
       <a href="#" id="menu-trash">papelera</a>
     </div>
   </main>
@@ -138,8 +142,6 @@
       <div class="add-row">
         <input id="subtask-new" type="text" placeholder="nueva subtarea…" />
         <button class="btn" id="subtask-add">añadir</button>
-      </div>
-      <div class="add-row right">
         <button class="btn" data-close>cerrar</button>
       </div>
     </div>
@@ -165,6 +167,24 @@
       <div class="add-row right">
         <button class="btn" data-close>cerrar</button>
         <button class="btn btn-primary" id="todoist-export">sincronizar</button>
+      </div>
+    </div>
+
+    <div class="dlg block hidden" id="dlg-scan">
+      <span class="block-title">escanear papel</span>
+      <p class="dimmed">Apunta la cámara a una lista con casillas «- [ ]»: las líneas
+        con casilla vacía se añadirán como to-dos del proyecto seleccionado
+        (las marcadas «- [x]» se ignoran). El reconocimiento es local, sin internet.</p>
+      <video id="scan-video" autoplay playsinline muted></video>
+      <ul id="scan-results" class="select-list hidden"></ul>
+      <div class="add-row">
+        <span class="dimmed" id="scan-status"></span>
+      </div>
+      <div class="add-row right">
+        <button class="btn" data-close>cerrar</button>
+        <button class="btn hidden" id="scan-retry">repetir foto</button>
+        <button class="btn btn-primary" id="scan-capture">capturar</button>
+        <button class="btn btn-primary hidden" id="scan-add">añadir seleccionadas</button>
       </div>
     </div>
 
@@ -241,6 +261,7 @@
 
   </div>
 
+  <script src="assets/tesseract/tesseract.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -322,13 +322,56 @@ function renderPomodoroLink() {
 
 function openDialog(id) {
   $("overlay").classList.remove("hidden");
-  document.querySelectorAll(".dlg").forEach((d) => d.classList.add("hidden"));
-  $(id).classList.remove("hidden");
+  // Cancela cualquier cierre en curso y oculta el resto de diálogos.
+  document.querySelectorAll(".dlg").forEach((d) => {
+    d.classList.add("hidden");
+    d.classList.remove("closing");
+  });
+  const dlg = $(id);
+  dlg.classList.remove("hidden"); // al mostrarse, el CSS lo desliza hacia arriba
+  // Si un focus() durante la animación provocó scroll (el diálogo entra desde
+  // fuera de la vista), se corrige aquí para que no "bote" el contenido.
+  dlg.scrollTop = 0;
+  $("overlay").scrollTop = 0;
+  dlg.addEventListener(
+    "animationend",
+    () => {
+      dlg.scrollTop = 0;
+      $("overlay").scrollTop = 0;
+    },
+    { once: true }
+  );
 }
 
 function closeDialogs() {
-  $("overlay").classList.add("hidden");
-  document.querySelectorAll(".dlg").forEach((d) => d.classList.add("hidden"));
+  stopScanCamera(); // por si el diálogo abierto era el escáner
+  const open = document.querySelector(".dlg:not(.hidden):not(.closing)");
+  if (!open) {
+    $("overlay").classList.add("hidden");
+    return;
+  }
+  // Desliza el diálogo hacia abajo y oculta al terminar la animación.
+  open.classList.add("closing");
+  // Sin animación (p. ej. prefers-reduced-motion): ocultar directamente.
+  if (getComputedStyle(open).animationName === "none") {
+    open.classList.remove("closing");
+    open.classList.add("hidden");
+    $("overlay").classList.add("hidden");
+    return;
+  }
+  open.addEventListener(
+    "animationend",
+    () => {
+      // Si mientras tanto se abrió otro diálogo, openDialog ya limpió esto.
+      if (!open.classList.contains("closing")) return;
+      open.classList.remove("closing");
+      open.classList.add("hidden");
+      if (!document.querySelector(".dlg:not(.hidden)")) {
+        $("overlay").classList.add("hidden");
+      }
+    },
+    { once: true }
+  );
 }
 
 document.querySelectorAll("[data-close]").forEach((b) =>
@@ -343,7 +386,9 @@ function askText(title, initial, onOk) {
   const input = $("input-text");
   input.value = initial;
   openDialog("dlg-input");
-  input.focus();
+  // preventScroll: enfocar durante la animación de entrada haría scroll
+  // hacia el input (aún fuera de la vista) y el diálogo "botaría".
+  input.focus({ preventScroll: true });
   input.select();
   const ok = () => {
     const v = input.value.trim();
@@ -406,7 +451,7 @@ $("todo-subtasks").addEventListener("click", () => {
   if (!selectedTodo()) return setStatus("No hay tarea seleccionada");
   renderSubtasksDialog();
   openDialog("dlg-subtasks");
-  $("subtask-new").focus();
+  $("subtask-new").focus({ preventScroll: true });
 });
 
 async function addSubtask() {
@@ -520,6 +565,214 @@ $("menu-sync").addEventListener("click", () => {
   } else {
     todoistSync();
   }
+});
+
+// --- Escáner de papel (OCR local con tesseract.js) -------------------------------------
+//
+// Flujo: cámara → captura → OCR → líneas con casilla vacía «- [ ]» →
+// lista de confirmación editable → add_todo al proyecto seleccionado.
+
+const scan = { stream: null, worker: null };
+
+// Rutas absolutas: el worker de tesseract resuelve las relativas contra sí mismo.
+const TESS_BASE = new URL("assets/tesseract", location.href).href;
+
+/** Motor de OCR: recibe un canvas y devuelve las líneas de texto detectadas.
+ *  Desacoplado a propósito: para cambiar de motor (p. ej. una API de visión)
+ *  basta con sustituir esta función. */
+async function ocrLines(canvas) {
+  if (!scan.worker) {
+    scan.worker = await Tesseract.createWorker("spa", 1, {
+      workerPath: `${TESS_BASE}/worker.min.js`,
+      corePath: TESS_BASE, // elige solo el core (SIMD o no)
+      langPath: TESS_BASE, // + /spa.traineddata.gz
+    });
+    await scan.worker.setParameters({
+      tessedit_pageseg_mode: "4", // una columna de líneas: como una lista en papel
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300",
+    });
+  }
+  const { data } = await scan.worker.recognize(canvas);
+  return data.lines?.map((l) => l.text) ?? data.text.split("\n");
+}
+
+/** Prepara la captura para el OCR: reescala hasta ~2400 px de ancho, pasa a
+ *  escala de grises y estira el contraste entre los percentiles 5 y 95
+ *  (el binarizado fino ya lo hace tesseract por dentro). */
+function preprocessForOcr(source) {
+  const scale = Math.min(2, Math.max(1, 2400 / source.width));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(source.width * scale);
+  canvas.height = Math.round(source.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = ((d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000) | 0;
+    d[i] = y; // luma provisional en el canal R
+    hist[y]++;
+  }
+  const total = d.length / 4;
+  let lo = 0;
+  let hi = 255;
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= total * 0.05) { lo = v; break; }
+  }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) {
+    acc += hist[v];
+    if (acc >= total * 0.05) { hi = v; break; }
+  }
+  const range = Math.max(hi - lo, 1);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = Math.min(255, Math.max(0, ((d[i] - lo) * 255) / range)) | 0;
+    d[i] = d[i + 1] = d[i + 2] = y;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// Casilla vacía al inicio de línea: «- [ ]», «[ ]», «( )» o un cuadrado
+// que el OCR haya reconocido como tal. Las marcadas ([x], [✓]…) se ignoran.
+// Tolerante con las confusiones típicas del OCR: «[ ]» puede llegar como
+// «[]», «[_]», «( )», «{ }», «L]»… y el guión como distintos trazos.
+const SCAN_EMPTY_BOX = /^\s*[-–—•*·]?\s*(?:[\[({L]\s*[_.\-]?\s*[\])}]|[□❑◻☐])\s*(.{2,})$/u;
+const SCAN_DONE_BOX = /^\s*[-–—•*·]?\s*[\[\(]\s*[xX×✓✔]\s*[\]\)]/u;
+
+function parseTodoLines(lines) {
+  const out = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || SCAN_DONE_BOX.test(line)) continue;
+    const m = line.match(SCAN_EMPTY_BOX);
+    if (m) out.push(m[1].trim());
+  }
+  return out;
+}
+
+function setScanStatus(msg) {
+  $("scan-status").textContent = msg;
+}
+
+function stopScanCamera() {
+  scan.stream?.getTracks().forEach((t) => t.stop());
+  scan.stream = null;
+  $("scan-video").srcObject = null;
+}
+
+/** Deja el diálogo en su estado inicial (cámara visible, sin resultados). */
+function resetScanDialog() {
+  $("scan-video").classList.remove("hidden");
+  $("scan-results").classList.add("hidden");
+  $("scan-results").innerHTML = "";
+  $("scan-capture").classList.remove("hidden");
+  $("scan-add").classList.add("hidden");
+  $("scan-retry").classList.add("hidden");
+  setScanStatus("Arrancando la cámara…");
+}
+
+async function startScanCamera() {
+  try {
+    scan.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 } },
+      audio: false,
+    });
+    $("scan-video").srcObject = scan.stream;
+    setScanStatus("Encuadra la lista y pulsa «capturar».");
+  } catch (e) {
+    setScanStatus(`No se pudo abrir la cámara: ${e.message ?? e}`);
+  }
+}
+
+$("menu-scan").addEventListener("click", () => {
+  if (!currentProject()) {
+    return setStatus("Crea o selecciona un proyecto antes de escanear");
+  }
+  resetScanDialog();
+  openDialog("dlg-scan");
+  startScanCamera();
+});
+
+$("scan-retry").addEventListener("click", () => {
+  resetScanDialog();
+  startScanCamera();
+});
+
+$("scan-capture").addEventListener("click", async () => {
+  const video = $("scan-video");
+  if (!video.videoWidth) return setScanStatus("La cámara aún no está lista.");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  stopScanCamera();
+  video.classList.add("hidden");
+  $("scan-capture").disabled = true;
+  setScanStatus("Reconociendo texto… (la primera vez tarda unos segundos)");
+  try {
+    const lines = await ocrLines(preprocessForOcr(canvas));
+    renderScanResults(parseTodoLines(lines), lines);
+  } catch (e) {
+    setScanStatus(`Error de OCR: ${e.message ?? e}`);
+    $("scan-retry").classList.remove("hidden");
+  } finally {
+    $("scan-capture").disabled = false;
+    $("scan-capture").classList.add("hidden");
+  }
+});
+
+function renderScanResults(todos, rawLines = []) {
+  const list = $("scan-results");
+  list.innerHTML = "";
+  list.classList.remove("hidden");
+  $("scan-retry").classList.remove("hidden");
+  if (todos.length === 0) {
+    // Enseña lo que el OCR leyó de verdad: distingue «foto mala» (basura o
+    // nada) de «filtro que no casa» (texto correcto sin casillas detectadas).
+    const raw = rawLines.map((l) => l.trim()).filter(Boolean);
+    setScanStatus(raw.length
+      ? `Sin líneas «- [ ]». Leí: «${raw.join(" ⏎ ").slice(0, 220)}»`
+      : "No se reconoció ningún texto. Más luz, más cerca y el papel sin inclinar.");
+    return;
+  }
+  for (const t of todos) {
+    const li = document.createElement("li");
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = true;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = t;
+    input.className = "scan-edit";
+    li.append(check, input);
+    list.appendChild(li);
+  }
+  $("scan-add").classList.remove("hidden");
+  setScanStatus(`${todos.length} posibles to-dos. Desmarca o corrige antes de añadir.`);
+}
+
+$("scan-add").addEventListener("click", async () => {
+  const p = currentProject();
+  if (!p) return setStatus("No hay proyecto seleccionado");
+  const titles = [...$("scan-results").querySelectorAll("li")]
+    .filter((li) => li.querySelector("input[type=checkbox]").checked)
+    .map((li) => li.querySelector("input[type=text]").value.trim())
+    .filter(Boolean);
+  for (const text of titles) {
+    await call("add_todo", { project: ui.project, text });
+  }
+  closeDialogs();
+  setStatus(titles.length
+    ? `${titles.length} tareas añadidas desde papel a «${p.name}»`
+    : "Nada que añadir");
 });
 
 // --- Modo oscuro (tinta clara sobre papel oscuro; se recuerda entre sesiones) ---------
@@ -1011,6 +1264,45 @@ document.addEventListener("keydown", (e) => {
       break;
   }
 });
+
+// --- Splash de arranque (logo ASCII revelado de abajo arriba) ---------------------------
+
+const SPLASH_ART = `           ░████            ░████ ░██              ░██    ░██
+           ░██                ░██                  ░██
+           ░██   ░██    ░██   ░██ ░██ ░███████  ░████████ ░██ ░██████    ░███████
+░██████    ░██    ░██  ░██    ░██ ░██░██    ░██    ░██    ░██      ░██  ░██    ░██
+           ░██     ░█████     ░██ ░██░█████████    ░██    ░██ ░███████  ░██    ░██
+           ░██    ░██  ░██    ░██ ░██░██           ░██    ░██░██   ░██  ░██    ░██
+           ░██   ░██    ░██   ░██ ░██ ░███████      ░████ ░██ ░█████░██  ░███████
+           ░██                ░██
+           ░████            ░████                                                  `;
+
+function runSplash() {
+  const splash = $("splash");
+  const pre = $("splash-art");
+  const lines = SPLASH_ART.split("\n");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const step = 90; // ms entre filas
+
+  lines.forEach((text, i) => {
+    const row = document.createElement("div");
+    row.textContent = text || " ";
+    if (!reduce) {
+      row.classList.add("splash-line");
+      // La fila de abajo se enciende primero; la de arriba, la última.
+      row.style.animationDelay = `${(lines.length - 1 - i) * step}ms`;
+    }
+    pre.appendChild(row);
+  });
+
+  const total = reduce ? 400 : (lines.length - 1) * step + 250 + 400; // revelado + pausa
+  setTimeout(() => {
+    splash.classList.add("done"); // fundido de salida (transition en CSS)
+    splash.addEventListener("transitionend", () => splash.remove(), { once: true });
+    setTimeout(() => splash.remove(), 700); // red de seguridad si no hay transición
+  }, total);
+}
+runSplash();
 
 // --- Arranque ----------------------------------------------------------------------------
 

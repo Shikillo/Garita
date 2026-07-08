@@ -55,7 +55,7 @@ body.dark {
   --secondary-color: var(--ink-dim);
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.82 0 0 0 0 0.72 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-body.dark .dlg { box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.5); }
+body.dark .dlg { box-shadow: 5px -5px 0 rgba(0, 0, 0, 0.5); }
 body.dark #overlay { background: rgba(0, 0, 0, 0.45); }
 
 /* --- Rejilla: idéntica a la TUI ------------------------------------------------
@@ -343,19 +343,34 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   inset: 0;
   background: rgba(35, 33, 27, 0.25);
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* los diálogos surgen desde el borde inferior */
   justify-content: center;
+  overflow: hidden;
   z-index: 100;
+  animation: overlay-fade 0.2s ease-out;
 }
 #overlay.hidden { display: none; }
+@keyframes overlay-fade { from { background: rgba(35, 33, 27, 0); } }
 
 .dlg {
   min-width: 380px;
   max-width: 560px;
   background: var(--paper);
-  box-shadow: 5px 5px 0 rgba(35, 33, 27, 0.35);
+  box-shadow: 5px -5px 0 rgba(35, 33, 27, 0.35);
   padding: 14px 12px 10px;
+  /* Hueco para el rótulo, que sobresale 0.8em por encima del borde:
+     sin recortes (nada de overflow aquí) y sin pegarlo al techo. */
+  margin-top: 1em;
   gap: 8px;
+  will-change: transform;
+  animation: dlg-slide-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Cierre: se desliza de vuelta hacia abajo (la clase la pone closeDialogs). */
+.dlg.closing { animation: dlg-slide-down 0.18s cubic-bezier(0.6, 0, 0.9, 0.4) forwards; }
+@keyframes dlg-slide-up { from { transform: translateY(102%); } }
+@keyframes dlg-slide-down { to { transform: translateY(102%); } }
+@media (prefers-reduced-motion: reduce) {
+  #overlay, .dlg, .dlg.closing { animation: none; }
 }
 .dlg.hidden { display: none; }
 .dlg .select-list { max-height: 260px; }
@@ -365,6 +380,9 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 .trash-item-buttons { margin-left: auto; display: flex; gap: 4px; }
 
 #dlg-help { max-width: 640px; }
+
+/* Más ancho para que «nueva subtarea… + añadir» quepan en una sola fila. */
+#dlg-subtasks { width: min(600px, 92vw); max-width: 600px; }
 .help-grid {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -378,3 +396,48 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 .help-grid span { color: var(--ink-dim); }
 
 input, textarea { user-select: text; }
+
+/* --- Escáner de papel (OCR) ------------------------------------------------ */
+#dlg-scan { width: min(600px, 92vw); }
+#scan-video {
+  width: 100%;
+  max-height: 340px;
+  background: #000;
+  object-fit: contain;
+  border: var(--border, 1px solid currentColor);
+}
+#scan-video.hidden { display: none; }
+#scan-results li { display: flex; gap: 8px; align-items: center; }
+#scan-results .scan-edit { flex: 1; }
+
+/* Utilidad genérica de ocultado (la usan los controles del escáner). */
+.hidden { display: none !important; }
+
+/* --- Splash de arranque ----------------------------------------------------- */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.35s ease;
+}
+#splash.done { opacity: 0; pointer-events: none; }
+#splash pre {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--ink);
+  white-space: pre;
+}
+/* Cada fila aparece de golpe (sin moverse) cuando le llega su turno;
+   el retardo por fila lo pone runSplash() de abajo hacia arriba. */
+.splash-line {
+  opacity: 0;
+  animation: splash-line-in 1ms steps(1, end) forwards;
+}
+@keyframes splash-line-in {
+  to { opacity: 1; }
+}
