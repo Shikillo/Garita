@@ -11,6 +11,7 @@
 mod model;
 mod todoist;
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use chrono::{Local, NaiveDate};
@@ -363,6 +364,8 @@ struct TodoistOutcome {
     skipped: usize,
     /// Tareas marcadas como hechas aquí por estar completadas en Todoist.
     completed: usize,
+    /// Tareas nuevas traídas de Todoist (creadas desde otro dispositivo).
+    imported: usize,
     /// Si algo falló a medias, el mensaje (lo ya hecho cuenta igualmente).
     error: Option<String>,
 }
@@ -428,6 +431,10 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
         todoist::export(&token, &outgoing).await
     };
 
+    // Vuelta: tareas activas en Todoist (incluye las creadas desde otros
+    // dispositivos) para importar las que aún no existan aquí.
+    let (incoming, import_error) = todoist::fetch_active(&token).await;
+
     // Registra las ids remotas de lo creado (aunque haya fallado a medias,
     // para no duplicarlo en el siguiente intento), marca lo completado en
     // Todoist (por id remota: las inserciones de recurrentes mueven índices)
@@ -454,11 +461,42 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
             }
         }
     }
-    if exported > 0 || completed > 0 {
+
+    // Importa las tareas activas de Todoist que aún no conocemos por su id
+    // remota (las recién exportadas ya la tienen y se saltan, sin duplicar).
+    let known: HashSet<String> = s
+        .projects
+        .iter()
+        .flat_map(|p| p.todos.iter())
+        .filter_map(|t| t.todoist_id.clone())
+        .collect();
+    let mut imported = 0;
+    for inc in incoming {
+        if known.contains(&inc.todoist_id) {
+            continue;
+        }
+        // Proyecto local homónimo; si no existe, se crea.
+        let pi = match s.projects.iter().position(|p| p.name == inc.project_name) {
+            Some(i) => i,
+            None => {
+                s.projects.push(Project::new(inc.project_name.clone()));
+                s.projects.len() - 1
+            }
+        };
+        let mut todo = Todo::new(inc.content);
+        todo.date = inc.due_date;
+        todo.priority = inc.priority;
+        todo.tags = inc.labels.into_iter().map(|l| l.to_lowercase()).collect();
+        todo.todoist_id = Some(inc.todoist_id);
+        s.projects[pi].todos.push(todo);
+        imported += 1;
+    }
+
+    if exported > 0 || completed > 0 || imported > 0 {
         let _ = s.save();
     }
-    let error = push_error.or(pull_error);
-    Ok(TodoistOutcome { store: s.clone(), exported, skipped, completed, error })
+    let error = push_error.or(pull_error).or(import_error);
+    Ok(TodoistOutcome { store: s.clone(), exported, skipped, completed, imported, error })
 }
 
 /// Cierra la aplicación (atajo `q`, como en la TUI).

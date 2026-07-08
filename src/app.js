@@ -536,6 +536,7 @@ async function todoistSync() {
     renderAll();
     const parts = [];
     if (res.exported > 0) parts.push(`${res.exported} enviadas a Todoist`);
+    if (res.imported > 0) parts.push(`${res.imported} traídas de Todoist`);
     if (res.completed > 0) parts.push(`${res.completed} completadas desde Todoist`);
     const summary = parts.length
       ? parts.join(", ")
@@ -1222,7 +1223,7 @@ document.addEventListener("keydown", (e) => {
       break;
     case "f": $("cal-assign").click(); break;
     case "p": $("todo-priority").click(); break;
-    case "R": $("todo-recur").click(); break;
+    case "c": $("todo-recur").click(); break;
     case "s": $("todo-subtasks").click(); break;
     case "m": $("todo-move").click(); break;
     case "v": $("timer-link-btn").click(); break;
@@ -1277,8 +1278,21 @@ const SPLASH_ART = `           ░████            ░████ ░█
            ░██                ░██
            ░████            ░████                                                  `;
 
-function runSplash() {
+let splashActive = true;         // true mientras el splash sigue en pantalla
+let splashDismissTimers = [];    // temporizadores de auto-cierre (cancelables)
+
+function dismissSplash() {
   const splash = $("splash");
+  if (!splash || !splashActive) return;
+  splashActive = false;
+  splashDismissTimers.forEach(clearTimeout);
+  splashDismissTimers = [];
+  splash.classList.add("done"); // fundido de salida (transition en CSS)
+  splash.addEventListener("transitionend", () => splash.remove(), { once: true });
+  setTimeout(() => splash.remove(), 700); // red de seguridad si no hay transición
+}
+
+function runSplash() {
   const pre = $("splash-art");
   const lines = SPLASH_ART.split("\n");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1296,12 +1310,126 @@ function runSplash() {
   });
 
   const total = reduce ? 400 : (lines.length - 1) * step + 250 + 400; // revelado + pausa
-  setTimeout(() => {
-    splash.classList.add("done"); // fundido de salida (transition en CSS)
-    splash.addEventListener("transitionend", () => splash.remove(), { once: true });
-    setTimeout(() => splash.remove(), 700); // red de seguridad si no hay transición
-  }, total);
+  splashDismissTimers.push(setTimeout(dismissSplash, total));
+
+  initRefreshGesture();
 }
+
+// --- Gesto de reinicio: mantén Shift+R durante 3 s para sincronizar y reiniciar --------
+//
+// Funciona en cualquier momento. Si es durante el splash, lo "congela" mientras
+// carga; con la app abierta muestra una barra flotante abajo. Al completar los 3 s,
+// sincroniza con Todoist (trae lo metido desde otros dispositivos) y reinicia la app
+// (recarga y repinta la animación de arranque). Si se suelta antes, se cancela. Se
+// ignora mientras escribes en un campo; y tras reiniciar no se re-arma la barra hasta
+// soltar la tecla (así no aparece una segunda barra con la tecla aún pulsada).
+
+const REFRESH_HOLD_MS = 3000;
+
+function initRefreshGesture() {
+  let charging = false;
+  let armed = true;   // false tras completar: no re-arma hasta soltar la tecla
+  let startTs = 0;
+  let rafId = 0;
+  let fill = null;
+  let label = null;
+
+  // Si acabamos de reiniciar por el gesto, arranca desarmado: no debe empezar
+  // otra barra hasta que se suelte la tecla (y luego se vuelva a pulsar).
+  try {
+    if (sessionStorage.getItem("gestureReload")) {
+      armed = false;
+      sessionStorage.removeItem("gestureReload");
+    }
+  } catch (_) {}
+
+  function buildUI() {
+    // Durante el splash la barra va dentro de él; si no, flota sobre la app.
+    const host = (splashActive && $("splash")) ? $("splash") : document.body;
+    const box = document.createElement("div");
+    box.id = "splash-refresh";
+    if (host === document.body) box.classList.add("floating");
+    label = document.createElement("div");
+    label.id = "splash-refresh-label";
+    label.textContent = "recargando…";
+    const track = document.createElement("div");
+    track.id = "splash-refresh-track";
+    fill = document.createElement("div");
+    fill.id = "splash-refresh-fill";
+    track.appendChild(fill);
+    box.appendChild(label);
+    box.appendChild(track);
+    host.appendChild(box);
+  }
+
+  function stopCharge() {
+    charging = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    const box = $("splash-refresh");
+    if (box) box.remove();
+    fill = label = null;
+  }
+
+  function tick() {
+    const pct = Math.min(100, ((Date.now() - startTs) / REFRESH_HOLD_MS) * 100);
+    if (fill) fill.style.width = `${pct}%`;
+    if (pct >= 100) { doRefresh(); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  async function doRefresh() {
+    charging = false;
+    armed = false; // no volver a cargar hasta que se suelte la tecla
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    if (fill) fill.style.width = "100%";
+    if (label) label.textContent = store.todoist_token ? "sincronizando…" : "reiniciando…";
+    try {
+      // Sincroniza con Todoist antes de reiniciar (persiste en el backend);
+      // al recargar, el arranque relee el estado ya actualizado.
+      if (store.todoist_token) await invoke("todoist_export");
+    } catch (_) {
+      // Reiniciamos igualmente aunque la sincronización falle.
+    }
+    // Marca que la recarga viene del gesto: al volver a arrancar no se re-arma
+    // la barra mientras la tecla siga pulsada (evita una segunda barra).
+    try { sessionStorage.setItem("gestureReload", "1"); } catch (_) {}
+    location.reload(); // reinicia la app y repinta la animación de arranque
+  }
+
+  function onKeyDown(e) {
+    if (e.code !== "KeyR" || !e.shiftKey) return;
+    if (charging || !armed || e.repeat) return;
+    // No secuestres la tecla si se está escribiendo en un campo de texto.
+    const el = document.activeElement;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+    e.preventDefault();
+    e.stopPropagation(); // evita otros atajos con la misma tecla
+    charging = true;
+    startTs = Date.now();
+    if (splashActive) {
+      // Congela el splash: cancela su cierre automático mientras se carga.
+      splashDismissTimers.forEach(clearTimeout);
+      splashDismissTimers = [];
+    }
+    buildUI();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function onKeyUp(e) {
+    if (e.code !== "KeyR" && e.key !== "Shift") return;
+    armed = true; // soltó la tecla: ya se puede volver a cargar
+    if (charging) {
+      stopCharge();
+      if (splashActive) dismissSplash(); // el splash ya cumplió su tiempo: ciérralo
+    }
+  }
+
+  window.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("keyup", onKeyUp, true);
+}
+
 runSplash();
 
 // --- Arranque ----------------------------------------------------------------------------

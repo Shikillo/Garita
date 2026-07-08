@@ -159,7 +159,8 @@
       <p class="dimmed">Pega tu token de API (Todoist → Configuración → Integraciones →
         Desarrollador). Cada tarea pendiente se envía una sola vez, con su proyecto,
         fecha, prioridad y #tags; las que completes en Todoist se marcan como
-        hechas aquí al sincronizar.</p>
+        hechas aquí, y las que crees en Todoist desde otro dispositivo se traen
+        aquí, al sincronizar.</p>
       <div class="add-row">
         <input id="todoist-token" type="password" placeholder="token de API…" />
         <button class="btn" id="todoist-save">guardar</button>
@@ -233,7 +234,7 @@
         <b>d</b><span>borrar (a la papelera, con confirmación)</span>
         <b>Espacio / Enter</b><span>marcar tarea · play relojes · editar notas</span>
         <b>f</b><span>asignar tarea al día seleccionado</span>
-        <b>p / R</b><span>prioridad · recurrencia de la tarea</span>
+        <b>p / c</b><span>prioridad · recurrencia de la tarea</span>
         <b>s</b><span>editar subtareas de la tarea</span>
         <b>m</b><span>mover la tarea a otro proyecto</span>
         <b>v</b><span>vincular pomodoro a la tarea</span>
@@ -244,6 +245,7 @@
         <b>x</b><span>papelera</span>
         <b>r / b</b><span>reset · foco↔break (relojes)</span>
         <b>?</b><span>mostrar esta ayuda</span>
+        <b>Shift+R (3 s)</b><span>sincronizar con Todoist y reiniciar</span>
         <b>q</b><span>salir</span>
       </div>
       <div class="add-row center">

@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -27,6 +28,27 @@ struct RemoteProject {
 #[derive(Deserialize)]
 struct RemoteTask {
     id: String,
+}
+
+/// Fecha de vencimiento de una tarea remota. `date` puede ser «YYYY-MM-DD» o
+/// una marca con hora «YYYY-MM-DDThh:mm:ss»; nos quedamos con el día.
+#[derive(Deserialize)]
+struct RemoteDue {
+    date: String,
+}
+
+/// Tarea activa (pendiente) tal como la lista la API, con lo que importamos.
+#[derive(Deserialize)]
+struct ActiveTask {
+    id: String,
+    content: String,
+    project_id: String,
+    #[serde(default)]
+    priority: u8,
+    #[serde(default)]
+    due: Option<RemoteDue>,
+    #[serde(default)]
+    labels: Vec<String>,
 }
 
 /// Estado de una tarea remota ya exportada. La API v1 sigue devolviendo por id
@@ -55,6 +77,16 @@ pub struct Outgoing {
     pub labels: Vec<String>,
 }
 
+/// Tarea remota nueva lista para importar a un proyecto local (por nombre).
+pub struct Incoming {
+    pub todoist_id: String,
+    pub project_name: String,
+    pub content: String,
+    pub due_date: Option<NaiveDate>,
+    pub priority: Priority,
+    pub labels: Vec<String>,
+}
+
 /// Prioridad local → prioridad Todoist (1 normal … 4 urgente).
 pub fn priority(p: Priority) -> u8 {
     match p {
@@ -62,6 +94,16 @@ pub fn priority(p: Priority) -> u8 {
         Priority::Low => 2,
         Priority::Medium => 3,
         Priority::High => 4,
+    }
+}
+
+/// Prioridad Todoist (1 normal … 4 urgente) → prioridad local.
+pub fn priority_from(p: u8) -> Priority {
+    match p {
+        4 => Priority::High,
+        3 => Priority::Medium,
+        2 => Priority::Low,
+        _ => Priority::None,
     }
 }
 
@@ -75,9 +117,12 @@ fn describe(e: reqwest::Error) -> String {
     }
 }
 
-async fn fetch_projects(
+/// Trae todos los proyectos remotos. `by_id` decide la clave del mapa:
+/// `true` → id→nombre (para importar), `false` → nombre→id (para exportar).
+async fn fetch_projects_map(
     client: &reqwest::Client,
     auth: &str,
+    by_id: bool,
 ) -> Result<HashMap<String, String>, String> {
     let mut projects = HashMap::new();
     let mut cursor: Option<String> = None;
@@ -97,12 +142,26 @@ async fn fetch_projects(
             .json()
             .await
             .map_err(describe)?;
-        projects.extend(page.results.into_iter().map(|p| (p.name, p.id)));
+        projects.extend(page.results.into_iter().map(|p| {
+            if by_id {
+                (p.id, p.name)
+            } else {
+                (p.name, p.id)
+            }
+        }));
         match page.next_cursor {
             Some(c) => cursor = Some(c),
             None => return Ok(projects),
         }
     }
+}
+
+/// Proyectos remotos por nombre → id (para exportar).
+async fn fetch_projects(
+    client: &reqwest::Client,
+    auth: &str,
+) -> Result<HashMap<String, String>, String> {
+    fetch_projects_map(client, auth, false).await
 }
 
 async fn post_json<T: serde::de::DeserializeOwned>(
@@ -204,4 +263,62 @@ pub async fn export(
         }
     }
     (created, None)
+}
+
+/// Trae todas las tareas activas (pendientes) de Todoist para importar las que
+/// aún no existan aquí. Devuelve cada tarea con el nombre de su proyecto remoto
+/// resuelto (o «Todoist» si no se encontró) y, si algo falló, el mensaje de
+/// error; lo ya recogido cuenta igualmente (el llamador salta las conocidas).
+pub async fn fetch_active(token: &str) -> (Vec<Incoming>, Option<String>) {
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {token}");
+
+    let names = match fetch_projects_map(&client, &auth, true).await {
+        Ok(m) => m,
+        Err(e) => return (Vec::new(), Some(e)),
+    };
+
+    let mut incoming = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let mut req = client
+            .get(format!("{API}/tasks"))
+            .header("Authorization", &auth);
+        if let Some(c) = &cursor {
+            req = req.query(&[("cursor", c)]);
+        }
+        let page: Page<ActiveTask> = match req
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+        {
+            Ok(r) => match r.json().await {
+                Ok(p) => p,
+                Err(e) => return (incoming, Some(describe(e))),
+            },
+            Err(e) => return (incoming, Some(describe(e))),
+        };
+        for t in page.results {
+            let project_name = names
+                .get(&t.project_id)
+                .cloned()
+                .unwrap_or_else(|| "Todoist".to_string());
+            let due_date = t.due.and_then(|d| {
+                let day = d.date.get(..10).unwrap_or(d.date.as_str());
+                NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()
+            });
+            incoming.push(Incoming {
+                todoist_id: t.id,
+                project_name,
+                content: t.content,
+                due_date,
+                priority: priority_from(t.priority),
+                labels: t.labels,
+            });
+        }
+        match page.next_cursor {
+            Some(c) => cursor = Some(c),
+            None => return (incoming, None),
+        }
+    }
 }

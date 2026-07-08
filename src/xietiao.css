@@ -441,3 +441,38 @@ input, textarea { user-select: text; }
 @keyframes splash-line-in {
   to { opacity: 1; }
 }
+/* Indicador del gesto de recarga (mantener Shift+R sobre el splash). */
+#splash-refresh {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  width: min(360px, 60vw);
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+#splash-refresh-label {
+  margin-bottom: 6px;
+  letter-spacing: 0.08em;
+}
+#splash-refresh-track {
+  height: 6px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+#splash-refresh-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ink);
+  transition: width 60ms linear;
+}
+/* Con la app ya abierta, la barra flota abajo sobre la interfaz. */
+#splash-refresh.floating {
+  position: fixed;
+  bottom: 24px;
+  z-index: 400;
+  padding: 10px 14px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
