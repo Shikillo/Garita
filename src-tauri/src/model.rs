@@ -262,6 +262,10 @@ pub struct Store {
     /// Token de API de Todoist, si el usuario ha conectado su cuenta.
     #[serde(default)]
     pub todoist_token: Option<String>,
+    /// Ids de Todoist de tareas borradas aquí, pendientes de borrarse allí
+    /// en la próxima sincronización (y de no re-importarse mientras tanto).
+    #[serde(default)]
+    pub todoist_deleted: Vec<String>,
 }
 
 impl Store {

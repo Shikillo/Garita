@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use chrono::{Local, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
+use chrono::{Duration, Local, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use tauri::State;
 
 use model::{PomodoroSession, Project, Recurrence, Store, Subtask, Todo, TrashItem, TrashKind};
@@ -90,6 +90,12 @@ fn delete_project(state: State<AppState>, project: usize) -> Store {
     with_store(&state, |s| {
         if project < s.projects.len() {
             let p = s.projects.remove(project);
+            // Sus tareas pendientes ya exportadas deben borrarse en Todoist.
+            for t in &p.todos {
+                if let (false, Some(id)) = (t.done, &t.todoist_id) {
+                    s.todoist_deleted.push(id.clone());
+                }
+            }
             s.trash.push(TrashItem {
                 kind: TrashKind::Project(p),
                 deleted_at: Some(Local::now().date_naive()),
@@ -191,6 +197,10 @@ fn delete_todo(state: State<AppState>, project: usize, todo: usize) -> Store {
         if todo < p.todos.len() {
             let t = p.todos.remove(todo);
             let name = p.name.clone();
+            // Si estaba exportada y pendiente, debe borrarse en Todoist.
+            if let (false, Some(id)) = (t.done, &t.todoist_id) {
+                s.todoist_deleted.push(id.clone());
+            }
             s.trash.push(TrashItem {
                 kind: TrashKind::Todo { project: name, todo: t },
                 deleted_at: Some(Local::now().date_naive()),
@@ -389,6 +399,22 @@ fn set_notes(state: State<AppState>, project: Option<usize>, text: String) -> St
 
 // --- Papelera ---------------------------------------------------------------
 
+/// Reconcilia con Todoist la tarea que vuelve de la papelera: si su borrado
+/// remoto aún estaba pendiente, se cancela (la tarea sigue allí); si ya se
+/// ejecutó, se olvida la id para que la tarea se re-exporte como nueva.
+fn unmark_deleted(deleted: &mut Vec<String>, todo: &mut Todo) {
+    if todo.done {
+        return;
+    }
+    if let Some(id) = &todo.todoist_id {
+        if deleted.iter().any(|x| x == id) {
+            deleted.retain(|x| x != id.as_str());
+        } else {
+            todo.todoist_id = None;
+        }
+    }
+}
+
 #[tauri::command]
 fn restore_trash(state: State<AppState>, item: usize) -> Store {
     with_store(&state, |s| {
@@ -397,8 +423,14 @@ fn restore_trash(state: State<AppState>, item: usize) -> Store {
         }
         let entry = s.trash.remove(item);
         match entry.kind {
-            TrashKind::Project(p) => s.projects.push(p),
-            TrashKind::Todo { project, todo } => {
+            TrashKind::Project(mut p) => {
+                for t in &mut p.todos {
+                    unmark_deleted(&mut s.todoist_deleted, t);
+                }
+                s.projects.push(p);
+            }
+            TrashKind::Todo { project, mut todo } => {
+                unmark_deleted(&mut s.todoist_deleted, &mut todo);
                 // Busca el proyecto por nombre; si ya no existe, lo recrea.
                 match s.projects.iter().position(|p| p.name == project) {
                     Some(i) => s.projects[i].todos.push(todo),
@@ -455,6 +487,10 @@ struct TodoistOutcome {
     completed: usize,
     /// Tareas nuevas traídas de Todoist (creadas desde otro dispositivo).
     imported: usize,
+    /// Tareas borradas en Todoist por haberse borrado aquí.
+    deleted: usize,
+    /// Tareas cerradas en Todoist por haberse completado aquí.
+    closed: usize,
     /// Si algo falló a medias, el mensaje (lo ya hecho cuenta igualmente).
     error: Option<String>,
 }
@@ -474,17 +510,27 @@ fn set_todoist_token(state: State<AppState>, token: String) -> Store {
 #[tauri::command]
 async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, String> {
     // Recoge lo pendiente sin retener el lock durante las peticiones de red.
-    let (token, outgoing, known_ids) = {
+    let (token, outgoing, known_ids, to_delete, recently_done) = {
         let s = state.0.lock().unwrap();
         let token = s
             .todoist_token
             .clone()
             .ok_or("no hay token de Todoist configurado")?;
+        let to_delete = s.todoist_deleted.clone();
         let mut outgoing = Vec::new();
         let mut known_ids = Vec::new();
+        // Completadas aquí hace poco: se cierran también allí. La ventana de
+        // 7 días acota las peticiones (cerrar una ya cerrada es inocuo).
+        let mut recently_done = Vec::new();
+        let week_ago = Local::now().date_naive() - Duration::days(7);
         for (pi, p) in s.projects.iter().enumerate() {
             for (ti, t) in p.todos.iter().enumerate() {
                 if t.done {
+                    if let (Some(id), Some(d)) = (&t.todoist_id, t.completed_at) {
+                        if d >= week_ago {
+                            recently_done.push(id.clone());
+                        }
+                    }
                     continue;
                 }
                 if let Some(id) = &t.todoist_id {
@@ -510,9 +556,24 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
                 });
             }
         }
-        (token, outgoing, known_ids)
+        (token, outgoing, known_ids, to_delete, recently_done)
     };
     let skipped = known_ids.len();
+
+    // Propaga los borrados locales ANTES de importar: lo borrado aquí se
+    // borra allí, y así la importación de después ya no lo trae de vuelta.
+    let (deleted_ids, delete_error) = if to_delete.is_empty() {
+        (Vec::new(), None)
+    } else {
+        todoist::delete_tasks(&token, &to_delete).await
+    };
+
+    // Propaga los completados locales recientes.
+    let (closed, close_error) = if recently_done.is_empty() {
+        (0, None)
+    } else {
+        todoist::close_tasks(&token, &recently_done).await
+    };
 
     // Vuelta: qué tareas ya exportadas se han completado en Todoist.
     let (remote_done, pull_error) = if known_ids.is_empty() {
@@ -537,6 +598,8 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
     // Todoist (por id remota: las inserciones de recurrentes mueven índices)
     // y persiste.
     let mut s = state.0.lock().unwrap();
+    // Las lápidas ya ejecutadas se olvidan; las fallidas se reintentarán.
+    s.todoist_deleted.retain(|id| !deleted_ids.contains(id));
     let exported = created.len();
     for (pi, ti, id) in created {
         if let Some(t) = s.projects.get_mut(pi).and_then(|p| p.todos.get_mut(ti)) {
@@ -569,7 +632,9 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
         .collect();
     let mut imported = 0;
     for inc in incoming {
-        if known.contains(&inc.todoist_id) {
+        // Se saltan las ya conocidas y las pendientes de borrado remoto
+        // (si el borrado falló, re-importarlas las resucitaría).
+        if known.contains(&inc.todoist_id) || s.todoist_deleted.contains(&inc.todoist_id) {
             continue;
         }
         // Proyecto local homónimo; si no existe, se crea.
@@ -590,11 +655,24 @@ async fn todoist_export(state: State<'_, AppState>) -> Result<TodoistOutcome, St
         imported += 1;
     }
 
-    if exported > 0 || completed > 0 || imported > 0 {
+    if exported > 0 || completed > 0 || imported > 0 || !deleted_ids.is_empty() {
         let _ = s.save();
     }
-    let error = push_error.or(pull_error).or(import_error);
-    Ok(TodoistOutcome { store: s.clone(), exported, skipped, completed, imported, error })
+    let error = push_error
+        .or(pull_error)
+        .or(import_error)
+        .or(delete_error)
+        .or(close_error);
+    Ok(TodoistOutcome {
+        store: s.clone(),
+        exported,
+        skipped,
+        completed,
+        imported,
+        deleted: deleted_ids.len(),
+        closed,
+        error,
+    })
 }
 
 /// Cierra la aplicación (atajo `q`, como en la TUI).

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" id="Interface-Essential-Chart--Pixel-Placeholder" height="32" width="32">
+  <desc>
+    Grafico de barras provisional, en el estilo pixel de los demas iconos.
+    Sustituyelo por tu estadisticas.svg cuando lo tengas.
+  </desc>
+  <title>estadisticas</title>
+  <g>
+    <path d="M4.57 19.81h4.57v9.14H4.57Z" fill="#000000" stroke-width="1"></path>
+    <path d="M13.71 9.14h4.57v19.81h-4.57Z" fill="#000000" stroke-width="1"></path>
+    <path d="M22.86 14.48h4.57v14.47h-4.57Z" fill="#000000" stroke-width="1"></path>
+    <path d="M1.52 3.05h1.53v27.43H1.52Z" fill="#000000" stroke-width="1"></path>
+    <path d="M3.05 28.95h27.43v1.53H3.05Z" fill="#000000" stroke-width="1"></path>
+  </g>
+</svg>

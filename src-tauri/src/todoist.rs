@@ -2,7 +2,8 @@
 //!
 //! Ida (Xietiao → Todoist): cada tarea pendiente se crea una única vez en
 //! Todoist (su id remota se recuerda en `Todo::todoist_id`), dentro de un
-//! proyecto remoto homónimo del local (se crea si no existe).
+//! proyecto remoto homónimo del local (se crea si no existe). Las tareas
+//! borradas aquí se borran allí, y las completadas aquí se cierran allí.
 //!
 //! Vuelta (Todoist → Xietiao): las tareas ya exportadas que aparezcan
 //! completadas en Todoist se marcan como hechas también aquí.
@@ -240,6 +241,56 @@ pub async fn fetch_completed(token: &str, ids: &[String]) -> (Vec<String>, Optio
         }
     }
     (completed, None)
+}
+
+/// Borra en Todoist las tareas de `ids` (borradas localmente). Devuelve las
+/// ids que ya no existen allí (una 404 cuenta: alguien la borró antes) y, si
+/// algo falló a medias, el mensaje; lo ya borrado cuenta igualmente.
+pub async fn delete_tasks(token: &str, ids: &[String]) -> (Vec<String>, Option<String>) {
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {token}");
+    let mut deleted = Vec::new();
+    for id in ids {
+        let res = client
+            .delete(format!("{API}/tasks/{id}"))
+            .header("Authorization", &auth)
+            .send()
+            .await;
+        match res {
+            Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => deleted.push(id.clone()),
+            Ok(r) => match r.error_for_status() {
+                Ok(_) => deleted.push(id.clone()),
+                Err(e) => return (deleted, Some(describe(e))),
+            },
+            Err(e) => return (deleted, Some(describe(e))),
+        }
+    }
+    (deleted, None)
+}
+
+/// Cierra en Todoist las tareas de `ids` (completadas localmente). Cerrar una
+/// ya cerrada es inocuo y las purgadas (404) se ignoran. Devuelve cuántas se
+/// cerraron y, si algo falló a medias, el mensaje.
+pub async fn close_tasks(token: &str, ids: &[String]) -> (usize, Option<String>) {
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {token}");
+    let mut closed = 0;
+    for id in ids {
+        let res = client
+            .post(format!("{API}/tasks/{id}/close"))
+            .header("Authorization", &auth)
+            .send()
+            .await;
+        match res {
+            Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {}
+            Ok(r) => match r.error_for_status() {
+                Ok(_) => closed += 1,
+                Err(e) => return (closed, Some(describe(e))),
+            },
+            Err(e) => return (closed, Some(describe(e))),
+        }
+    }
+    (closed, None)
 }
 
 /// Exporta `outgoing` a Todoist en orden. Devuelve las tareas creadas como

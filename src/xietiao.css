@@ -283,7 +283,10 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 
 /* --- Notas ---------------------------------------------------------------------------------- */
 
-#blk-notes { min-height: 120px; }
+/* Notas + bandeja de ajustes comparten fila: la bandeja pliega/despliega su
+   ancho y las notas absorben el resto en tiempo real. */
+#notes-row { display: flex; min-height: 0; }
+#blk-notes { flex: 1; min-width: 0; min-height: 120px; }
 #notes-text {
   flex: 1;
   resize: none;
@@ -295,6 +298,87 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   cursor: text;
 }
 #notes-text:focus { outline: none; }
+
+/* --- Iconos (SVG monocromo como máscara: se tintan con el color actual) --------------------------- */
+
+.icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) no-repeat center / contain;
+  mask: var(--icon) no-repeat center / contain;
+}
+
+/* --- Fila inferior: barra de progreso + botón de ajustes ------------------------------------------- */
+
+#progress-row {
+  position: relative; /* ancla de la bandeja de iconos */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+
+/* Cuadradito de ajustes: misma altura que el bloque de progreso.
+   El height: 100% ancla la altura a la de la fila (la marca el bloque de
+   progreso) y el aspect-ratio deriva el ancho de ahí; sin él, el cuadrado
+   puede calcularse al revés (alto desde el ancho) y sobresalir por abajo. */
+#blk-settings { padding: 0; height: 100%; aspect-ratio: 1; }
+#settings-btn {
+  border: none;
+  background: none;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  cursor: default;
+}
+#settings-btn:hover { background: var(--ink-faint); }
+/* Con la bandeja abierta, en vídeo inverso (como una selección). */
+#settings-btn.active { background: var(--ink); color: var(--paper); }
+
+/* Bandeja de iconos: columna vertical junto a las notas. Al abrirla ocupa
+   sitio real en la fila y las notas se encogen en tiempo real (transición);
+   cerrada se pliega a ancho 0. El display se fuerza por encima del .hidden
+   global (display: none) para que el pliegue pueda animarse. */
+#settings-tray {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: space-evenly;
+  width: 42px;
+  margin-left: 12px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 4px 0;
+  overflow: hidden;
+  transition: width 0.25s ease, margin-left 0.25s ease, padding 0.25s ease,
+              border-width 0.25s ease, opacity 0.2s ease, visibility 0.25s;
+}
+#settings-tray.hidden {
+  width: 0;
+  margin-left: 0;
+  padding: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+  opacity: 0;
+  visibility: hidden; /* que sus botones no reciban foco/clics plegada */
+}
+.tray-btn {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  padding: 7px 0;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  cursor: default;
+}
+.tray-btn:hover { background: var(--ink-faint); color: var(--ink); }
+.tray-btn .icon { width: 18px; height: 18px; flex: none; }
 
 /* --- Barra de progreso ---------------------------------------------------------------------------- */
 
@@ -324,8 +408,6 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   white-space: nowrap;
 }
 #statusbar { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-#statusline a { color: var(--ink-dim); text-decoration: underline; }
-#statusline a:hover { color: var(--ink); background: none; }
 
 /* --- Diálogos ---------------------------------------------------------------------------------------- */
 

@@ -718,6 +718,8 @@ async function todoistSync() {
     if (res.exported > 0) parts.push(`${res.exported} enviadas a Todoist`);
     if (res.imported > 0) parts.push(`${res.imported} traídas de Todoist`);
     if (res.completed > 0) parts.push(`${res.completed} completadas desde Todoist`);
+    if (res.deleted > 0) parts.push(`${res.deleted} borradas en Todoist`);
+    if (res.closed > 0) parts.push(`${res.closed} cerradas en Todoist`);
     const summary = parts.length
       ? parts.join(", ")
       : `Nada nuevo (${res.skipped} ya estaban en Todoist)`;
@@ -954,6 +956,17 @@ $("scan-add").addEventListener("click", async () => {
   setStatus(titles.length
     ? `${titles.length} tareas añadidas desde papel a «${p.name}»`
     : "Nada que añadir");
+});
+
+// --- Bandeja de ajustes (los iconos de la esquina inferior) ---------------------------
+//
+// No es un diálogo: sin overlay ni oscurecido. Se abre y cierra sólo con el
+// botón de settings, y se queda abierta mientras tanto.
+
+$("settings-btn").addEventListener("click", () => {
+  const nowHidden = $("settings-tray").classList.toggle("hidden");
+  $("settings-btn").classList.toggle("active", !nowHidden);
+  playSound("move");
 });
 
 // --- Sonidos de interfaz ---------------------------------------------------------------

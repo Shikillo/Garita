@@ -16,17 +16,22 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
   ficheros se guardan reescalados como JPEG en `<config_dir>/xietiao/images/`
   (sólo local: la sincronización con Todoist no los envía).
 - **Papelera** — restaurar o purgar proyectos y tareas borradas.
-- **Escanear papel** — el enlace «escanear» de la línea de estado captura con la
+- **Menú de ajustes** — el cuadradito junto a la barra de progreso despliega en
+  la esquina una bandeja de iconos (tema, estadísticas, todoist, sincronizar,
+  escanear y papelera) que se queda abierta hasta volver a pulsarlo, sin
+  oscurecer la pantalla. Los iconos viven en `src/assets/icons/` (SVG monocromo,
+  estilo Streamline Pixel) y se tintan solos con el color de la tinta del tema.
+- **Escanear papel** — el icono «escanear» del menú de ajustes captura con la
   cámara una lista escrita con casillas `- [ ]` y añade las líneas con casilla
   vacía como to-dos del proyecto seleccionado (las `- [x]` se ignoran), previa
   lista de confirmación editable. El OCR
   ([tesseract.js](https://tesseract.projectnaptha.com/), español) corre en local
   y sin conexión; funciona mejor con texto impreso que manuscrito.
-- **Tema** — el enlace «tema» de la línea de estado abre un popup para elegir
+- **Tema** — el icono «tema» del menú de ajustes abre un popup para elegir
   los dos colores de la interfaz (papel y tinta), con presets claro/oscuro y
   botón para intercambiarlos; los tonos intermedios se derivan solos y la
   elección se recuerda entre sesiones.
-- **Estadísticas** — el enlace «estadísticas» de la línea de estado abre un
+- **Estadísticas** — el icono «estadísticas» del menú de ajustes abre un
   resumen con las tareas y pomodoros de hoy y de los últimos 7 días (con
   gráfico de barras), la racha de días completando tareas y el progreso por
   proyecto.
@@ -37,8 +42,10 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
 - **Todoist** — sincronización: las tareas pendientes se envían a Todoist
   (proyecto homónimo, fecha —con hora si la tiene—, prioridad y `#tags`), cada una una sola vez, y las
   que completes en Todoist se marcan como hechas también aquí (recurrencia
-  incluida; borrarlas allí no las completa). Se lanza desde el enlace
-  «sincronizar» de la línea de estado o desde el diálogo de Todoist; basta con
+  incluida; borrarlas allí no las completa). Los cambios locales también se
+  propagan: lo que borres aquí se borra allí al sincronizar (y no vuelve a
+  importarse) y lo que completes aquí se cierra allí. Se lanza desde el icono
+  «sincronizar» del menú de ajustes o desde el diálogo de Todoist; basta con
   pegar tu token de API (Todoist → Configuración → Integraciones → Desarrollador).
 - **Atajos de teclado** — los mismos que la TUI (pulsa `?` dentro de la app para verlos): `Tab` cambia de panel, `j/k` navega, `a` añade, `d` borra, `Espacio` marca, `/` busca…
 
@@ -51,9 +58,9 @@ Puedes alternar entre la TUI y la app de escritorio con los mismos datos.
 
 > Nota: si tienes ambas abiertas a la vez, la última en guardar gana.
 
-> Nota: la integración con Todoist añade dos campos al modelo (`todoist_token` y
-> el `todoist_id` de cada tarea), las imágenes adjuntas añaden otro (`image`)
-> y las horas otro (`time`).
+> Nota: la integración con Todoist añade tres campos al modelo (`todoist_token`,
+> `todoist_deleted` y el `todoist_id` de cada tarea), las imágenes adjuntas
+> añaden otro (`image`) y las horas otro (`time`).
 > La TUI incluye los de Todoist desde su versión 0.2.0; si usas una TUI que no
 > conozca alguno de estos campos junto a esta app, al guardar los descartaría
 > (perderías el token, se duplicarían tareas al re-exportar y las tareas
