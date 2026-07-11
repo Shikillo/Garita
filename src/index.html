@@ -103,6 +103,16 @@
               </div>
             </section>
           </div>
+
+          <!-- drawer de documentos: se despliega desde la bandeja de ajustes y
+               se superpone a la columna de relojes deslizándose desde la derecha. -->
+          <div class="block hidden" id="docs-drawer">
+            <span class="block-title">documentos</span>
+            <ul id="doc-list" class="select-list grow"></ul>
+            <div class="add-row center">
+              <button class="btn" id="doc-add" title="añadir documentos (pdf, txt, md, imágenes)">añadir</button>
+            </div>
+          </div>
         </div>
 
         <!-- notas + bandeja de ajustes: al abrir la bandeja, las notas se
@@ -115,6 +125,19 @@
               <label class="radio-label"><input type="radio" id="notes-project" name="notes-scope" /> <span id="notes-project-label">del proyecto</span></label>
             </div>
             <textarea id="notes-text" spellcheck="false"></textarea>
+            <!-- visor de documentos: cubre el bloque de notas deslizándose desde
+                 abajo; el contenedor exterior solo recorta durante la animación. -->
+            <div id="doc-viewer">
+              <div id="doc-viewer-panel">
+                <div class="add-row" id="doc-view-head">
+                  <span id="doc-view-title" class="dimmed"></span>
+                  <button class="btn" id="doc-view-close" title="cerrar el visor">✕</button>
+                </div>
+                <iframe id="doc-view-frame" class="hidden" title="documento"></iframe>
+                <pre id="doc-view-text" class="hidden"></pre>
+                <img id="doc-view-img" class="hidden" alt="documento" />
+              </div>
+            </div>
           </section>
           <div id="settings-tray" class="hidden">
             <button class="tray-btn" id="menu-theme" title="tema">
@@ -135,7 +158,7 @@
             <button class="tray-btn" id="menu-trash" title="papelera">
               <span class="icon" style="--icon: url('assets/icons/papelera.svg')"></span>
             </button>
-            <button class="tray-btn" id="menu-docker" title="docker">
+            <button class="tray-btn" id="menu-docs" title="documentos">
               <span class="icon" style="--icon: url('assets/icons/docker.svg')"></span>
             </button>
           </div>
@@ -338,6 +361,9 @@
 
   <!-- Selector de fichero para la imagen del to-do (se abre por JS). -->
   <input type="file" id="todo-image-file" accept="image/*" class="hidden" />
+
+  <!-- Selector de ficheros para el drawer de documentos (se abre por JS). -->
+  <input type="file" id="doc-file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden" />
 
   <script src="assets/tesseract/tesseract.min.js"></script>
   <script src="app.js"></script>

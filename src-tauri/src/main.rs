@@ -13,7 +13,7 @@ mod todoist;
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -382,6 +382,96 @@ fn get_todo_image(name: String) -> Result<String, String> {
     Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(bytes)))
 }
 
+// --- Documentos (drawer) ------------------------------------------------------
+//
+// Los documentos viven como ficheros en `<config_dir>/xietiao/docs/`; no tocan
+// el `Store`: la lista autoritativa es el propio directorio. El frontend los
+// manda y los pide codificados en base64, como las imágenes adjuntas.
+
+/// Directorio de documentos: `<config_dir>/xietiao/docs/`.
+fn docs_dir() -> PathBuf {
+    Store::config_dir().join("docs")
+}
+
+/// Extensiones de documento admitidas.
+const DOC_EXTS: &[&str] = &["pdf", "txt", "md", "png", "jpg", "jpeg", "gif", "webp"];
+
+/// Comprueba que el nombre es un fichero plano (sin rutas) con extensión admitida.
+fn valid_doc_name(name: &str) -> bool {
+    !name.contains(['/', '\\'])
+        && !name.contains("..")
+        && Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| DOC_EXTS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false)
+}
+
+/// Lista los documentos guardados, ordenados alfabéticamente.
+#[tauri::command]
+fn list_docs() -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(docs_dir())
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|n| valid_doc_name(n))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort_by_key(|n| n.to_lowercase());
+    names
+}
+
+/// Guarda un documento (bytes en base64). Si el nombre ya existe, añade un
+/// sufijo numérico antes de la extensión. Devuelve la lista actualizada.
+/// (Async: los PDF pueden ser grandes y así no bloquean el hilo principal.)
+#[tauri::command]
+async fn add_doc(name: String, data: String) -> Result<Vec<String>, String> {
+    if !valid_doc_name(&name) {
+        return Err("nombre de documento no válido (formatos: pdf, txt, md, imágenes)".into());
+    }
+    let bytes = BASE64.decode(data).map_err(|e| e.to_string())?;
+    let dir = docs_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stem = Path::new(&name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("documento");
+    let ext = Path::new(&name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let mut target = dir.join(&name);
+    let mut n = 1;
+    while target.exists() {
+        n += 1;
+        target = dir.join(format!("{stem} ({n}).{ext}"));
+    }
+    fs::write(&target, bytes).map_err(|e| e.to_string())?;
+    Ok(list_docs())
+}
+
+/// Devuelve un documento como base64 (el MIME lo deduce el frontend).
+#[tauri::command]
+async fn get_doc(name: String) -> Result<String, String> {
+    if !valid_doc_name(&name) {
+        return Err("nombre de documento no válido".into());
+    }
+    let bytes = fs::read(docs_dir().join(&name)).map_err(|e| e.to_string())?;
+    Ok(BASE64.encode(bytes))
+}
+
+/// Borra un documento del disco (definitivo: los documentos no pasan por la
+/// papelera). Devuelve la lista actualizada.
+#[tauri::command]
+fn delete_doc(name: String) -> Result<Vec<String>, String> {
+    if !valid_doc_name(&name) {
+        return Err("nombre de documento no válido".into());
+    }
+    fs::remove_file(docs_dir().join(&name)).map_err(|e| e.to_string())?;
+    Ok(list_docs())
+}
+
 // --- Notas ------------------------------------------------------------------
 
 /// Guarda notas: generales si `project` es `null`, del proyecto si no.
@@ -706,6 +796,10 @@ fn main() {
             set_todo_image,
             clear_todo_image,
             get_todo_image,
+            list_docs,
+            add_doc,
+            get_doc,
+            delete_doc,
             set_notes,
             restore_trash,
             purge_trash,

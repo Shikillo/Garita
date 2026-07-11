@@ -995,8 +995,191 @@ function setTray(open, { keyboard = false } = {}) {
 
 $("settings-btn").addEventListener("click", () => setTray(!trayOpen()));
 
-// Sin uso todavía; pronto lanzará cosas de docker.
-$("menu-docker").addEventListener("click", () => setStatus("docker: próximamente"));
+// --- Drawer de documentos ---------------------------------------------------------------
+//
+// El botón de libros de la bandeja despliega un cajón que se superpone a la
+// columna de relojes (pomodoro/reloj/cronómetro). Los ficheros (pdf, txt, md,
+// imágenes) viven en <config_dir>/xietiao/docs/ y aquí solo se listan; al
+// pulsar uno, un visor se desliza desde abajo cubriendo el bloque de notas.
+
+const DOC_MIME = {
+  pdf: "application/pdf",
+  txt: "text/plain; charset=utf-8",
+  md: "text/plain; charset=utf-8",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+let docs = [];           // nombres de fichero, como los devuelve el backend
+let docSel = -1;         // documento seleccionado con teclado; -1 = sin selección
+let docViewerUrl = null; // blob URL del documento abierto (se revoca al cerrar)
+
+function drawerOpen() {
+  return !$("docs-drawer").classList.contains("hidden");
+}
+
+function setDrawer(open, { keyboard = false } = {}) {
+  if (open === drawerOpen()) return;
+  if (!open) closeDocViewer(); // el visor no sobrevive al cajón
+  $("docs-drawer").classList.toggle("hidden", !open);
+  playSound(open ? "settings-open" : "settings-close");
+  docSel = open && keyboard ? 0 : -1;
+  if (open) refreshDocs();
+}
+
+async function refreshDocs() {
+  try {
+    docs = await invoke("list_docs");
+  } catch (e) {
+    setStatus(`Error: ${e}`);
+    docs = [];
+  }
+  renderDocs();
+}
+
+function renderDocs() {
+  docSel = Math.min(docSel, docs.length - 1);
+  const list = $("doc-list");
+  list.innerHTML = "";
+  if (docs.length === 0) {
+    const li = document.createElement("li");
+    li.className = "dimmed";
+    li.textContent = "sin documentos";
+    list.appendChild(li);
+    return;
+  }
+  docs.forEach((name, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="todo-title"></span><button class="btn doc-del" title="borrar">✕</button>`;
+    li.querySelector(".todo-title").textContent = name;
+    li.title = name;
+    if (i === docSel) li.classList.add("selected");
+    li.addEventListener("click", () => {
+      docSel = i;
+      renderDocs();
+      openDocViewer(name);
+    });
+    li.querySelector(".doc-del").addEventListener("click", (e) => {
+      e.stopPropagation(); // que no abra el visor de paso
+      askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name));
+    });
+    list.appendChild(li);
+  });
+}
+
+async function deleteDoc(name) {
+  try {
+    docs = await invoke("delete_doc", { name });
+    playSound("delete");
+    setStatus(`«${name}» borrado`);
+  } catch (e) {
+    setStatus(`Error: ${e}`);
+  }
+  renderDocs();
+}
+
+$("menu-docs").addEventListener("click", () =>
+  // Activado con Enter desde la bandeja (traySel >= 0), la selección de teclado
+  // arranca en el primer documento, como al abrir la bandeja con Alt.
+  setDrawer(!drawerOpen(), { keyboard: traySel >= 0 }));
+
+$("doc-add").addEventListener("click", () => $("doc-file").click());
+
+/** Base64 de un ArrayBuffer, por trozos (btoa no traga binarios grandes de golpe). */
+function b64encode(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+$("doc-file").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  e.target.value = ""; // permite volver a elegir el mismo fichero
+  if (!files.length) return;
+  setStatus(files.length === 1 ? "Guardando documento…" : "Guardando documentos…");
+  try {
+    for (const f of files) {
+      docs = await invoke("add_doc", { name: f.name, data: b64encode(await f.arrayBuffer()) });
+    }
+    playSound("add-edit");
+    setStatus(files.length === 1
+      ? `«${files[0].name}» guardado`
+      : `${files.length} documentos guardados`);
+  } catch (err) {
+    setStatus(`Error: ${err}`);
+  }
+  renderDocs();
+});
+
+// El visor: iframe para pdf (el visor nativo del webview), <pre> para texto
+// e <img> para imágenes. Solo uno de los tres es visible a la vez.
+
+function viewerOpen() {
+  return $("doc-viewer").classList.contains("open");
+}
+
+async function openDocViewer(name) {
+  let b64;
+  try {
+    b64 = await invoke("get_doc", { name });
+  } catch (e) {
+    return setStatus(`Error: ${e}`);
+  }
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  if (docViewerUrl) {
+    URL.revokeObjectURL(docViewerUrl);
+    docViewerUrl = null;
+  }
+  const frame = $("doc-view-frame"), text = $("doc-view-text"), img = $("doc-view-img");
+  [frame, text, img].forEach((el) => el.classList.add("hidden"));
+  frame.removeAttribute("src");
+  img.removeAttribute("src");
+  text.textContent = "";
+  const ext = name.split(".").pop().toLowerCase();
+  if (ext === "txt" || ext === "md") {
+    text.textContent = new TextDecoder().decode(bytes);
+    text.classList.remove("hidden");
+  } else {
+    docViewerUrl = URL.createObjectURL(new Blob([bytes], { type: DOC_MIME[ext] ?? "application/octet-stream" }));
+    if (ext === "pdf") {
+      frame.src = docViewerUrl;
+      frame.classList.remove("hidden");
+    } else {
+      img.src = docViewerUrl;
+      img.classList.remove("hidden");
+    }
+  }
+  $("doc-view-title").textContent = name;
+  if (!viewerOpen()) {
+    $("doc-viewer").classList.add("open");
+    playSound("popup");
+  }
+}
+
+function closeDocViewer() {
+  if (!viewerOpen()) return;
+  $("doc-viewer").classList.remove("open");
+  playSound("popup-close");
+  // El contenido se limpia cuando el panel ya se ha deslizado fuera.
+  setTimeout(() => {
+    if (viewerOpen()) return; // se reabrió mientras tanto
+    $("doc-view-frame").removeAttribute("src");
+    $("doc-view-img").removeAttribute("src");
+    $("doc-view-text").textContent = "";
+    if (docViewerUrl) {
+      URL.revokeObjectURL(docViewerUrl);
+      docViewerUrl = null;
+    }
+  }, 300);
+}
+
+$("doc-view-close").addEventListener("click", closeDocViewer);
 
 // --- Sonidos de interfaz ---------------------------------------------------------------
 //
@@ -1572,6 +1755,41 @@ document.addEventListener("keydown", (e) => {
     setTray(!trayOpen(), { keyboard: true });
     return;
   }
+
+  // Con el drawer de documentos abierto: flechas (o j/k) recorren la lista,
+  // Enter abre el visor, d borra y Escape cierra (primero el visor, luego el
+  // cajón). Va antes que la bandeja para quedarse con las flechas y el Enter.
+  if (drawerOpen()) {
+    switch (k) {
+      case "ArrowUp": case "k": case "ArrowDown": case "j": {
+        stop();
+        if (!docs.length) return;
+        const delta = k === "ArrowUp" || k === "k" ? -1 : 1;
+        docSel = docSel < 0 ? 0 : (docSel + delta + docs.length) % docs.length;
+        renderDocs();
+        playSound("move");
+        return;
+      }
+      case " ": case "Enter":
+        stop();
+        if (docSel >= 0 && docs[docSel]) openDocViewer(docs[docSel]);
+        return;
+      case "d":
+        stop();
+        if (docSel >= 0 && docs[docSel]) {
+          const name = docs[docSel];
+          askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name));
+        }
+        return;
+      case "Escape":
+        stop();
+        if (viewerOpen()) closeDocViewer();
+        else setDrawer(false);
+        return;
+      // Cualquier otra tecla sigue su curso normal con el cajón abierto.
+    }
+  }
+
   if (traySel >= 0 && trayOpen()) {
     const btns = trayBtns();
     switch (k) {

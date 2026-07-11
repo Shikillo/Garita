@@ -89,6 +89,7 @@ body.dark #overlay { background: rgba(0, 0, 0, 0.45); }
 /* Calendario y relojes estiran a la misma altura; el cronómetro queda
    anclado abajo, alineado con el borde inferior del calendario. */
 #cal-row {
+  position: relative; /* ancla del drawer de documentos */
   display: grid;
   grid-template-columns: minmax(0, 1fr) 170px;
   column-gap: 12px;
@@ -347,7 +348,9 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   display: flex !important;
   flex-direction: column;
   justify-content: space-evenly;
-  width: 42px;
+  /* 38px = alto del bloque de progreso (y por tanto ancho del cuadrado de
+     ajustes de debajo): así ambos quedan alineados también por la izquierda. */
+  width: 38px;
   margin-left: 12px;
   background: var(--paper);
   border: 1px solid var(--ink);
@@ -381,6 +384,106 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 /* Icono seleccionado navegando con Alt + flechas: vídeo inverso, como una selección. */
 .tray-btn.selected { background: var(--ink); color: var(--paper); }
 .tray-btn .icon { width: 18px; height: 18px; flex: none; }
+
+/* --- Drawer de documentos --------------------------------------------------------------------------- */
+
+/* Cajón de documentos: bloque opaco que se superpone a la columna de relojes
+   (misma anchura) deslizándose desde la derecha. Como en la bandeja, el
+   display se fuerza por encima del .hidden global para poder animar. */
+#docs-drawer {
+  display: flex !important;
+  position: absolute; /* pisa el position: relative de .block */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 170px;
+  background: var(--paper);
+  z-index: 5;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 0.2s ease, visibility 0.25s;
+}
+#docs-drawer.hidden {
+  /* +14px: que el borde y su sombra de título salgan del todo por la derecha */
+  transform: translateX(calc(100% + 14px));
+  opacity: 0;
+  visibility: hidden; /* plegado, que no reciba foco ni clics */
+}
+#doc-list li { cursor: default; }
+#doc-list .todo-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.doc-del {
+  flex: none;
+  padding: 0 4px;
+  line-height: inherit;
+  visibility: hidden; /* solo se ve al pasar por encima o con la fila seleccionada */
+}
+#doc-list li:hover .doc-del,
+#doc-list li.selected .doc-del { visibility: visible; }
+
+/* Visor de documentos: cubre el bloque de notas por dentro deslizándose desde
+   abajo. El contenedor exterior solo recorta (overflow) para que el panel no
+   asome bajo el bloque durante la animación; el título «notas» queda fuera. */
+#doc-viewer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; /* cerrado no estorba al textarea de notas */
+  /* Cerrado, invisible de verdad: si no, el ✕ del panel seguiría siendo
+     enfocable y un Tab desde las notas haría scroll del recorte para
+     mostrarlo (el «panel fantasma»). La transición retrasa el ocultado
+     hasta que el deslizamiento de salida termina. */
+  visibility: hidden;
+  transition: visibility 0.25s;
+  z-index: 4;
+}
+#doc-viewer.open { visibility: visible; }
+#doc-viewer-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--paper);
+  padding: 12px 10px 8px; /* el mismo respiro interior que un .block */
+  transform: translateY(102%);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#doc-viewer.open #doc-viewer-panel {
+  transform: none;
+  pointer-events: auto;
+}
+#doc-view-head { flex: none; }
+#doc-view-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#doc-view-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 1px solid var(--ink);
+}
+#doc-view-text {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  overflow: auto;
+  white-space: pre-wrap;
+  user-select: text;
+  cursor: text;
+}
+#doc-view-img {
+  flex: 1;
+  min-height: 0;
+  object-fit: contain;
+  border: 1px solid var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  #docs-drawer, #doc-viewer-panel { transition: none; }
+}
 
 /* --- Barra de progreso ---------------------------------------------------------------------------- */
 
