@@ -1,4 +1,4 @@
-// Xietiao de escritorio — frontend.
+// Garita de escritorio — frontend.
 // El estado autoritativo vive en Rust: cada acción llama a un command de Tauri
 // que devuelve el Store completo, y aquí sólo se re-pinta.
 
@@ -1310,18 +1310,18 @@ function applyTheme(theme) {
   root.setProperty("--ink-dim", mixHex(ink, paper, 0.5));
   root.setProperty("--ink-faint", mixHex(ink, paper, 0.2));
   document.body.classList.toggle("dark", isDarkColor(paper));
-  localStorage.setItem("xietiao-theme", JSON.stringify(theme));
+  localStorage.setItem("garita-theme", JSON.stringify(theme));
   $("theme-paper").value = paper;
   $("theme-ink").value = ink;
 }
 
 function loadTheme() {
   try {
-    const saved = JSON.parse(localStorage.getItem("xietiao-theme"));
+    const saved = JSON.parse(localStorage.getItem("garita-theme"));
     if (saved?.paper && saved?.ink) return saved;
   } catch { /* sin tema guardado */ }
   // Migración del antiguo interruptor de modo oscuro.
-  return localStorage.getItem("xietiao-dark") === "1"
+  return localStorage.getItem("garita-dark") === "1"
     ? THEME_PRESETS.oscuro
     : THEME_PRESETS.claro;
 }

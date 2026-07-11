@@ -1,11 +1,11 @@
 //! Integración con Todoist (API unificada v1): sincronización de tareas.
 //!
-//! Ida (Xietiao → Todoist): cada tarea pendiente se crea una única vez en
+//! Ida (Garita → Todoist): cada tarea pendiente se crea una única vez en
 //! Todoist (su id remota se recuerda en `Todo::todoist_id`), dentro de un
 //! proyecto remoto homónimo del local (se crea si no existe). Las tareas
 //! borradas aquí se borran allí, y las completadas aquí se cierran allí.
 //!
-//! Vuelta (Todoist → Xietiao): las tareas ya exportadas que aparezcan
+//! Vuelta (Todoist → Garita): las tareas ya exportadas que aparezcan
 //! completadas en Todoist se marcan como hechas también aquí.
 
 use std::collections::HashMap;

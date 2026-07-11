@@ -1,8 +1,8 @@
 [package]
-name = "xietiao-desktop"
+name = "garita-desktop"
 version = "0.3.0"
 edition = "2021"
-description = "Xietiao — dashboard de productividad de escritorio (Tauri + system.css)"
+description = "Garita — dashboard de productividad de escritorio (Tauri + system.css)"
 license = "MIT"
 
 [build-dependencies]

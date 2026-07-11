@@ -6,6 +6,6 @@
        (función de escanear listas en papel). Tauri fusiona este fichero
        con el Info.plist del bundle automáticamente. -->
   <key>NSCameraUsageDescription</key>
-  <string>Xietiao usa la cámara para escanear listas de tareas en papel y añadirlas como to-dos.</string>
+  <string>Garita usa la cámara para escanear listas de tareas en papel y añadirlas como to-dos.</string>
 </dict>
 </plist>

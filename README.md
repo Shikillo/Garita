@@ -1,4 +1,6 @@
-# Xietiao Desktop
+# Garita
+
+*(antes «Xietiao Desktop»)*
 
 Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el dashboard TUI de productividad), construida con **Tauri 2** y una interfaz "papel y tinta" basada en [terminal.css](https://terminalcss.xyz/), que replica **la misma disposición de bloques que la versión de terminal**: proyectos y to-dos a la izquierda, calendario con la tira de relojes (pomodoro/reloj/cronómetro), notas y barra de progreso a la derecha, y línea de estado abajo.
 
@@ -74,7 +76,7 @@ Puedes alternar entre la TUI y la app de escritorio con los mismos datos.
   `terminal.css` y el motor de OCR (tesseract.js + core WASM + modelo español,
   en `src/assets/tesseract/`, ~9 MB) van vendorizados en `src/assets/` para que
   la app funcione sin red; el tema papel/tinta, el modo
-  oscuro y los bloques estilo ratatui (título sobre el borde) están en `src/xietiao.css`.
+  oscuro y los bloques estilo ratatui (título sobre el borde) están en `src/garita.css`.
 - `src-tauri/icons/` — icono de la app; `icon.svg` es la fuente y de él salen
   `icon.icns` (macOS), `icon.ico` (Windows) y los PNG (Linux).
 
@@ -102,7 +104,7 @@ Cada sistema genera sólo los suyos: Tauri no cross-compila.
 
 > Si el paso del `.dmg` falla en local (usa AppleScript para decorar la ventana),
 > el `.app` ya está bien; el DMG puede montarse a mano con
-> `hdiutil create -volname Xietiao -srcfolder <carpeta con la .app> -format UDZO salida.dmg`.
+> `hdiutil create -volname Garita -srcfolder <carpeta con la .app> -format UDZO salida.dmg`.
 
 ## Releases automáticas
 

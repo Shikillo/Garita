@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Xietiao SK-XII",
+  "productName": "Garita SK-XII",
   "version": "0.3.0",
-  "identifier": "com.shikillo.xietiao",
+  "identifier": "com.shikillo.garita",
   "build": {
     "frontendDist": "../src"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Xietiao",
+        "title": "Garita",
         "width": 1280,
         "height": 840,
         "minWidth": 1000,

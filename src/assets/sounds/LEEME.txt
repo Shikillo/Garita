@@ -1,4 +1,4 @@
-Sonidos de interfaz de Xietiao.
+Sonidos de interfaz de Garita.
 
 Cada evento busca aquí su fichero (se prueban .flac, .wav, .mp3 y .ogg,
 en ese orden). Los nombres esperados y cuándo suenan:

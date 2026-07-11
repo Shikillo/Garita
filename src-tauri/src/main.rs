@@ -1,4 +1,4 @@
-//! Xietiao de escritorio — backend Tauri.
+//! Garita de escritorio — backend Tauri.
 //!
 //! El estado autoritativo vive aquí (en Rust), envuelto en un `Mutex<Store>`.
 //! Cada command mutador aplica el cambio, persiste en disco y devuelve el
@@ -809,5 +809,5 @@ fn main() {
             quit_app,
         ])
         .run(tauri::generate_context!())
-        .expect("error al arrancar Xietiao");
+        .expect("error al arrancar Garita");
 }

@@ -1,4 +1,4 @@
-//! Modelo de datos de Xietiao y persistencia en disco (JSON).
+//! Modelo de datos de Garita y persistencia en disco (JSON).
 
 use std::fs;
 use std::path::PathBuf;
@@ -270,6 +270,10 @@ pub struct Store {
 
 impl Store {
     /// Directorio base de configuración/datos: `<config_dir>/xietiao`.
+    ///
+    /// Se mantiene el nombre antiguo `xietiao` a propósito: es el mismo
+    /// almacén que usa la versión TUI y el que ya contiene los datos del
+    /// usuario; renombrarlo rompería ambas cosas.
     pub fn config_dir() -> PathBuf {
         let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         base.join("xietiao")

@@ -4680,7 +4680,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xietiao-desktop"
+name = "garita-desktop"
 version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
