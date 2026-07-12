@@ -33,7 +33,9 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
 - **Tema** — el icono «tema» del menú de ajustes abre un popup para elegir
   los dos colores de la interfaz (papel y tinta), con presets claro/oscuro y
   botón para intercambiarlos; los tonos intermedios se derivan solos y la
-  elección se recuerda entre sesiones.
+  elección se recuerda entre sesiones. Incluye dos efectos opcionales:
+  **dither** (trama de puntos sobre toda la interfaz) e **impresión**
+  (temblor de bordes y sangrado de tinta, como una fotocopia).
 - **Estadísticas** — el icono «estadísticas» del menú de ajustes abre un
   resumen con las tareas y pomodoros de hoy y de los últimos 7 días (con
   gráfico de barras), la racha de días completando tareas y el progreso por

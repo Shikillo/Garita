@@ -928,6 +928,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "garita-desktop"
+version = "0.3.1"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dirs 5.0.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4677,20 +4691,6 @@ dependencies = [
  "libc",
  "once_cell",
  "pkg-config",
-]
-
-[[package]]
-name = "garita-desktop"
-version = "0.3.1"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "dirs 5.0.1",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
 ]
 
 [[package]]

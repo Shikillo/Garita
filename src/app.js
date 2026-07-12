@@ -1341,6 +1341,33 @@ $("theme-light").addEventListener("click", () => applyTheme(THEME_PRESETS.claro)
 $("theme-dark").addEventListener("click", () => applyTheme(THEME_PRESETS.oscuro));
 applyTheme(loadTheme());
 
+// --- Efectos visuales (dither e impresión; se recuerdan entre sesiones) ----------------
+//
+// Cada efecto es una clase en <body>: .fx-dither superpone una trama de
+// puntos (garita.css) y .fx-print aplica el filtro SVG #fx-print definido
+// en index.html (temblor de bordes y sangrado de tinta).
+
+function applyFx(fx) {
+  document.body.classList.toggle("fx-dither", !!fx.dither);
+  document.body.classList.toggle("fx-print", !!fx.print);
+  localStorage.setItem("garita-fx", JSON.stringify(fx));
+  $("fx-dither").checked = !!fx.dither;
+  $("fx-print").checked = !!fx.print;
+}
+
+function loadFx() {
+  try { return JSON.parse(localStorage.getItem("garita-fx")) ?? {}; }
+  catch { return {}; }
+}
+
+function fxFromInputs() {
+  return { dither: $("fx-dither").checked, print: $("fx-print").checked };
+}
+
+$("fx-dither").addEventListener("change", () => applyFx(fxFromInputs()));
+$("fx-print").addEventListener("change", () => applyFx(fxFromInputs()));
+applyFx(loadFx());
+
 // --- Proyectos: acciones ------------------------------------------------------------
 
 async function addProject() {
@@ -1910,15 +1937,11 @@ document.addEventListener("keydown", (e) => {
 
 // --- Splash de arranque (logo ASCII revelado de abajo arriba) ---------------------------
 
-const SPLASH_ART = `           ░████            ░████ ░██              ░██    ░██
-           ░██                ░██                  ░██
-           ░██   ░██    ░██   ░██ ░██ ░███████  ░████████ ░██ ░██████    ░███████
-░██████    ░██    ░██  ░██    ░██ ░██░██    ░██    ░██    ░██      ░██  ░██    ░██
-           ░██     ░█████     ░██ ░██░█████████    ░██    ░██ ░███████  ░██    ░██
-           ░██    ░██  ░██    ░██ ░██░██           ░██    ░██░██   ░██  ░██    ░██
-           ░██   ░██    ░██   ░██ ░██ ░███████      ░████ ░██ ░█████░██  ░███████
-           ░██                ░██
-           ░████            ░████                                                  `;
+const SPLASH_ART = ` ░███████ ░██   ░██          ░██    ░██ ░███████ ░███████
+░██       ░██  ░██            ░██  ░██     ░██      ░██
+ ░██████  ░█████     ░██████   ░█████      ░██      ░██
+      ░██ ░██  ░██            ░██  ░██     ░██      ░██
+░███████  ░██   ░██          ░██    ░██ ░███████ ░███████`;
 
 let splashActive = true;         // true mientras el splash sigue en pantalla
 let splashDismissTimers = [];    // temporizadores de auto-cierre (cancelables)

@@ -49,6 +49,32 @@ body.dark {
 body.dark .dlg { box-shadow: 5px -5px 0 rgba(0, 0, 0, 0.5); }
 body.dark #overlay { background: rgba(0, 0, 0, 0.45); }
 
+/* --- Efectos visuales opcionales (toggles del diálogo de tema; applyFx() en app.js) ---
+
+   Dither: trama de puntos superpuesta a toda la pantalla. Dos dameros de
+   tinta y papel a distinta escala y desfasados aproximan una matriz de
+   dither ordenado; al usar las variables del tema funciona con cualquier
+   combinación papel/tinta. */
+body.fx-dither::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* por encima de diálogos (100) y bandeja (400): es de pantalla completa */
+  pointer-events: none;
+  background-image:
+    repeating-conic-gradient(var(--ink) 0% 25%, transparent 0% 50%),
+    repeating-conic-gradient(var(--paper) 0% 25%, transparent 0% 50%);
+  background-size: 2px 2px, 4px 4px;
+  background-position: 0 0, 1px 1px;
+  opacity: 0.14;
+}
+
+/* Impresión: filtro SVG definido en index.html (temblor de bordes y
+   sangrado de tinta). El desplazamiento puede asomar transparencia en el
+   borde de la ventana, así que <html> lleva el color del papel detrás. */
+html { background: var(--paper); }
+body.fx-print { filter: url(#fx-print); }
+
 /* --- Rejilla: idéntica a la TUI ------------------------------------------------
    raíz    = [contenido | 1 línea de estado]
    columnas = izquierda 55% | derecha 45%

@@ -332,6 +332,11 @@
         <button class="btn" id="theme-light">claro</button>
         <button class="btn" id="theme-dark">oscuro</button>
       </div>
+      <div class="add-row">
+        <span class="dimmed">efectos:</span>
+        <label class="theme-pick"><input type="checkbox" id="fx-dither" /> dither</label>
+        <label class="theme-pick"><input type="checkbox" id="fx-print" /> impresión</label>
+      </div>
       <div class="add-row right">
         <button class="btn btn-primary" data-close>cerrar</button>
       </div>
@@ -364,6 +369,25 @@
 
   <!-- Selector de ficheros para el drawer de documentos (se abre por JS). -->
   <input type="file" id="doc-file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden" />
+
+  <!-- Filtro del efecto «impresión» (body.fx-print): la turbulencia desplaza
+       los bordes (temblor de imprenta) y el desenfoque + contraste engorda
+       los trazos de forma irregular (sangrado de tinta en el papel). -->
+  <svg width="0" height="0" aria-hidden="true">
+    <filter id="fx-print" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="7" result="fibras" />
+      <feDisplacementMap in="SourceGraphic" in2="fibras" scale="2.2" xChannelSelector="R" yChannelSelector="G" result="temblor" />
+      <feGaussianBlur in="temblor" stdDeviation="0.35" />
+      <!-- Gamma en vez de contraste lineal: oscurece los tonos medios del
+           desenfoque (la tinta «sangra») sin tocar los extremos, así el
+           color del papel no se lava hacia el blanco. -->
+      <feComponentTransfer>
+        <feFuncR type="gamma" amplitude="1" exponent="1.6" offset="0" />
+        <feFuncG type="gamma" amplitude="1" exponent="1.6" offset="0" />
+        <feFuncB type="gamma" amplitude="1" exponent="1.6" offset="0" />
+      </feComponentTransfer>
+    </filter>
+  </svg>
 
   <script src="assets/tesseract/tesseract.min.js"></script>
   <script src="app.js"></script>
