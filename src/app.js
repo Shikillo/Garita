@@ -1496,11 +1496,28 @@ function petOpen() {
   return $("pet-viewer").classList.contains("open");
 }
 
+/** Carga el gif personalizado (<config_dir>/xietiao/pet.gif) si existe;
+ *  sin él se queda el de assets. Se re-comprueba en cada apertura, así se
+ *  puede cambiar el fichero sin reiniciar la app. */
+async function refreshPetGif() {
+  try {
+    const b64 = await invoke("get_pet");
+    if (b64) $("pet-gif").src = `data:image/gif;base64,${b64}`;
+  } catch { /* sin backend o sin gif: el de assets */ }
+}
+
+/** Título del bloque del pomodoro: «mine.ico» mientras el pet lo cubre. */
+function renderPetTitle() {
+  $("pomodoro-title").textContent = petOpen() ? "mine.ico" : "pomodoro";
+}
+
 function setPet(open) {
   if (open === petOpen()) return;
   $("pet-viewer").classList.toggle("open", open);
   localStorage.setItem("garita-pet", open ? "1" : "0");
   playSound(open ? "popup" : "popup-close");
+  if (open) refreshPetGif();
+  renderPetTitle();
 }
 
 $("menu-pet").addEventListener("click", () => setPet(!petOpen()));
@@ -1515,6 +1532,8 @@ $("pet-gif").addEventListener("error", () => {
 if (localStorage.getItem("garita-pet") === "1") {
   $("pet-viewer").classList.add("open");
 }
+renderPetTitle();
+refreshPetGif();
 
 // --- Sonidos de interfaz ---------------------------------------------------------------
 //

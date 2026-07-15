@@ -328,6 +328,10 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   z-index: 4;
 }
 #pet-viewer.open { visibility: visible; }
+/* Los títulos flotantes de los bloques con visor se pintan por encima del
+   panel (si no, el visor les tapa la mitad de abajo y se ven cortados). */
+#blk-pomodoro > .block-title,
+#blk-calendar > .block-title { z-index: 6; }
 #pet-panel {
   position: absolute;
   inset: 0;

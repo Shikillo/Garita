@@ -501,6 +501,19 @@ async fn set_sketch(data: String) -> Result<(), String> {
     fs::write(&path, data).map_err(|e| e.to_string())
 }
 
+// --- Pet ----------------------------------------------------------------------
+//
+// Gif de la mascota personalizado: si el usuario deja un pet.gif en
+// <config_dir>/xietiao/ (junto al store.json), sustituye al de assets.
+
+/// Devuelve el gif personalizado en base64, o None si no hay.
+#[tauri::command]
+fn get_pet() -> Option<String> {
+    fs::read(Store::config_dir().join("pet.gif"))
+        .ok()
+        .map(|b| BASE64.encode(b))
+}
+
 // --- Notas ------------------------------------------------------------------
 
 /// Guarda notas: generales si `project` es `null`, del proyecto si no.
@@ -849,6 +862,7 @@ fn main() {
             delete_doc,
             get_sketch,
             set_sketch,
+            get_pet,
             set_notes,
             restore_trash,
             purge_trash,

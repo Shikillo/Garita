@@ -24,9 +24,10 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
 - **Pet** — el icono «pet» del menú de ajustes despliega un panel que cubre
   el pomodoro en su mismo sitio (el temporizador sigue corriendo debajo) con
   un gif en bucle teñido a duotono con los colores del tema. De serie hay un
-  gato pixelado; se cambia soltando cualquier gif en `src/assets/pet/pet.gif`
-  (mejor si es en grises o línea clara). La elección se recuerda entre
-  sesiones. La lista de **documentos**, por su parte, cubre el calendario al
+  gato pixelado; cada usuario puede poner el suyo soltando cualquier gif como
+  `<config_dir>/xietiao/pet.gif` (junto al `store.json`; mejor si es en grises
+  o línea clara) — se recarga al abrir el pet, sin reiniciar. La elección se
+  recuerda entre sesiones. La lista de **documentos**, por su parte, cubre el calendario al
   desplegarse (el título del bloque lo indica).
 - **Imágenes** — cada to-do puede llevar una imagen adjunta (botón «imagen» o
   tecla `i`): se ve en un popup y en la lista aparece el indicador `▣`. Los
