@@ -211,9 +211,16 @@ function renderTodos() {
   $("todo-time").value = sel?.time?.slice(0, 5) ?? "";
 }
 
+/** Título del bloque del calendario: «documentos» mientras el visor lo cubre. */
+function renderCalTitle() {
+  $("cal-title").textContent = drawerOpen()
+    ? "documentos"
+    : `calendario · ${MONTHS[ui.calMonth - 1]} ${ui.calYear}`;
+}
+
 function renderCalendar() {
   const y = ui.calYear, m = ui.calMonth;
-  $("cal-title").textContent = `calendario · ${MONTHS[m - 1]} ${y}`;
+  renderCalTitle();
 
   // Cuenta tareas por día del mes visible (todas: hechas tachadas en agenda).
   const pendingByDay = new Map();
@@ -1097,21 +1104,21 @@ const DOC_MIME = {
   webp: "image/webp",
 };
 
-let docs = [];           // nombres de fichero, como los devuelve el backend
-let docSel = -1;         // documento seleccionado con teclado; -1 = sin selección
-let docViewerUrl = null; // blob URL del documento abierto (se revoca al cerrar)
+let docs = [];   // nombres de fichero, como los devuelve el backend
+let docSel = -1; // documento seleccionado con teclado; -1 = sin selección
 
 function drawerOpen() {
-  return !$("docs-drawer").classList.contains("hidden");
+  return $("docs-viewer").classList.contains("open");
 }
 
 function setDrawer(open, { keyboard = false } = {}) {
   if (open === drawerOpen()) return;
-  if (!open) closeDocViewer(); // el visor no sobrevive al cajón
-  $("docs-drawer").classList.toggle("hidden", !open);
+  // Las ventanas de documentos abiertas sobreviven al cajón: son independientes.
+  $("docs-viewer").classList.toggle("open", open);
   playSound(open ? "settings-open" : "settings-close");
   docSel = open && keyboard ? 0 : -1;
   if (open) refreshDocs();
+  renderCalTitle(); // el título del bloque alterna calendario ↔ documentos
 }
 
 async function refreshDocs() {
@@ -1157,6 +1164,7 @@ function renderDocs() {
 async function deleteDoc(name) {
   try {
     docs = await invoke("delete_doc", { name });
+    closeDocWindow(name); // si estaba abierto en una ventana, se cierra
     playSound("delete");
     setStatus(`«${name}» borrado`);
   } catch (e) {
@@ -1201,14 +1209,72 @@ $("doc-file").addEventListener("change", async (e) => {
   renderDocs();
 });
 
-// El visor: iframe para pdf (el visor nativo del webview), <pre> para texto
-// e <img> para imágenes. Solo uno de los tres es visible a la vez.
+// El visor: cada documento se abre en su propia ventana flotante, arrastrable
+// por toda la app (asidero: el título y la fila superior) y redimensionable
+// por la esquina inferior derecha. Pueden abrirse varios a la vez y la última
+// ventana tocada queda encima. Dentro, iframe para pdf (el visor nativo del
+// webview), <pre> para texto e <img> para imágenes.
 
-function viewerOpen() {
-  return $("doc-viewer").classList.contains("open");
+const docWindows = new Map(); // nombre → { win, url } (url: blob a revocar al cerrar)
+const DOC_WIN_Z = 40;         // banda propia: sobre cajón (5) y boceto (6), bajo los diálogos (100)
+let docWinCascade = 0;        // cada ventana nueva se desplaza en diagonal
+
+function bringDocToFront(win) {
+  // Se renumera la banda entera (40+i) en vez de incrementar sin fin: por
+  // muchos clics que haya, nunca alcanza el z-index de los diálogos.
+  const rest = [...docWindows.values()].map((e) => e.win)
+    .filter((w) => w !== win)
+    .sort((a, b) => (+a.style.zIndex || 0) - (+b.style.zIndex || 0));
+  rest.push(win);
+  rest.forEach((w, i) => { w.style.zIndex = DOC_WIN_Z + i; });
+}
+
+/** La ventana de documento con mayor z-index, o null si no hay ninguna. */
+function topDocWindow() {
+  let top = null;
+  for (const { win } of docWindows.values()) {
+    if (!top || +win.style.zIndex > +top.style.zIndex) top = win;
+  }
+  return top;
+}
+
+/** Arrastre ("move") o redimensionado ("resize") con pointer capture: los
+ *  eventos siguen llegando aunque el puntero cruce otra ventana o un iframe. */
+function dragDocWindow(win, e, mode) {
+  e.preventDefault();
+  const rect = win.getBoundingClientRect();
+  const startX = e.clientX, startY = e.clientY;
+  // Mientras dura el gesto, los iframes no comen el puntero (son documentos
+  // aparte y romperían el seguimiento) ni se selecciona texto (garita.css).
+  document.body.classList.add("doc-dragging");
+  const onMove = (ev) => {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (mode === "move") {
+      // Limitado para que siempre quede asidero a la vista.
+      win.style.left = `${Math.min(Math.max(rect.left + dx, 48 - rect.width), innerWidth - 48)}px`;
+      win.style.top = `${Math.min(Math.max(rect.top + dy, 0), innerHeight - 32)}px`;
+    } else {
+      win.style.width = `${Math.max(rect.width + dx, 200)}px`;
+      win.style.height = `${Math.max(rect.height + dy, 140)}px`;
+    }
+  };
+  const onUp = () => {
+    document.body.classList.remove("doc-dragging");
+    win.removeEventListener("pointermove", onMove);
+    win.removeEventListener("pointerup", onUp);
+    win.removeEventListener("pointercancel", onUp);
+  };
+  win.setPointerCapture(e.pointerId);
+  win.addEventListener("pointermove", onMove);
+  win.addEventListener("pointerup", onUp);
+  win.addEventListener("pointercancel", onUp);
 }
 
 async function openDocViewer(name) {
+  // Ya abierto: no se duplica, se trae al frente.
+  const existing = docWindows.get(name);
+  if (existing) return bringDocToFront(existing.win);
+
   let b64;
   try {
     b64 = await invoke("get_doc", { name });
@@ -1216,54 +1282,102 @@ async function openDocViewer(name) {
     return setStatus(`Error: ${e}`);
   }
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  if (docViewerUrl) {
-    URL.revokeObjectURL(docViewerUrl);
-    docViewerUrl = null;
-  }
-  const frame = $("doc-view-frame"), text = $("doc-view-text"), img = $("doc-view-img");
-  [frame, text, img].forEach((el) => el.classList.add("hidden"));
-  frame.removeAttribute("src");
-  img.removeAttribute("src");
-  text.textContent = "";
   const ext = name.split(".").pop().toLowerCase();
+
+  const win = document.createElement("section");
+  win.className = "block doc-window";
+  win.dataset.doc = name;
+
+  const title = document.createElement("span");
+  title.className = "block-title";
+  title.textContent = name;
+
+  const head = document.createElement("div");
+  head.className = "add-row doc-win-head";
+  const close = document.createElement("button");
+  close.className = "btn";
+  close.title = "cerrar";
+  close.textContent = "✕";
+  close.addEventListener("click", () => closeDocWindow(name));
+  head.appendChild(close);
+
+  let url = null;
+  let content;
   if (ext === "txt" || ext === "md") {
-    text.textContent = new TextDecoder().decode(bytes);
-    text.classList.remove("hidden");
+    content = document.createElement("pre");
+    content.className = "doc-win-text";
+    content.textContent = new TextDecoder().decode(bytes);
   } else {
-    docViewerUrl = URL.createObjectURL(new Blob([bytes], { type: DOC_MIME[ext] ?? "application/octet-stream" }));
+    url = URL.createObjectURL(new Blob([bytes], { type: DOC_MIME[ext] ?? "application/octet-stream" }));
     if (ext === "pdf") {
-      frame.src = docViewerUrl;
-      frame.classList.remove("hidden");
+      content = document.createElement("iframe");
+      content.className = "doc-win-frame";
+      content.title = name;
+      content.src = url;
     } else {
-      img.src = docViewerUrl;
-      img.classList.remove("hidden");
+      content = document.createElement("img");
+      content.className = "doc-win-img";
+      content.alt = name;
+      content.src = url;
     }
   }
-  $("doc-view-title").textContent = name;
-  if (!viewerOpen()) {
-    $("doc-viewer").classList.add("open");
-    playSound("popup");
-  }
+
+  const grip = document.createElement("div");
+  grip.className = "doc-win-resize";
+  grip.title = "redimensionar";
+
+  win.append(title, head, content, grip);
+
+  // Tamaño inicial según el contenido, y en cascada para que no se tapen.
+  const w = Math.round(ext === "pdf" ? Math.min(680, innerWidth * 0.55) : Math.min(440, innerWidth * 0.4));
+  const h = Math.round(ext === "pdf" ? Math.min(720, innerHeight * 0.75) : Math.min(380, innerHeight * 0.5));
+  const off = (docWinCascade++ % 8) * 26;
+  win.style.width = `${w}px`;
+  win.style.height = `${h}px`;
+  win.style.left = `${Math.max(8, Math.round((innerWidth - w) / 2) - 90 + off)}px`;
+  win.style.top = `${Math.max(20, Math.round((innerHeight - h) / 2) - 30 + off)}px`;
+
+  win.addEventListener("pointerdown", (e) => {
+    bringDocToFront(win);
+    if (e.target.closest(".doc-win-resize")) return dragDocWindow(win, e, "resize");
+    // El contenido y los botones se usan, no arrastran; el resto (título,
+    // cabecera, bordes y padding) es asidero.
+    if (e.target.closest("iframe, pre, img, button")) return;
+    dragDocWindow(win, e, "move");
+  });
+
+  document.body.appendChild(win);
+  docWindows.set(name, { win, url });
+  bringDocToFront(win);
+  playSound("popup");
 }
 
-function closeDocViewer() {
-  if (!viewerOpen()) return;
-  $("doc-viewer").classList.remove("open");
+function closeDocWindow(name) {
+  const entry = docWindows.get(name);
+  if (!entry) return;
+  // Fuera del registro ya: no cuenta como "la de encima" mientras sale.
+  docWindows.delete(name);
   playSound("popup-close");
-  // El contenido se limpia cuando el panel ya se ha deslizado fuera.
-  setTimeout(() => {
-    if (viewerOpen()) return; // se reabrió mientras tanto
-    $("doc-view-frame").removeAttribute("src");
-    $("doc-view-img").removeAttribute("src");
-    $("doc-view-text").textContent = "";
-    if (docViewerUrl) {
-      URL.revokeObjectURL(docViewerUrl);
-      docViewerUrl = null;
-    }
-  }, 300);
+  const done = () => {
+    entry.win.remove();
+    if (entry.url) URL.revokeObjectURL(entry.url);
+  };
+  // Se desliza hacia abajo y se retira al terminar; sin animación
+  // (p. ej. prefers-reduced-motion), directamente.
+  entry.win.classList.add("closing");
+  if (getComputedStyle(entry.win).animationName === "none") return done();
+  entry.win.addEventListener("animationend", done, { once: true });
 }
 
-$("doc-view-close").addEventListener("click", closeDocViewer);
+// Un clic dentro del pdf no llega al pointerdown de la ventana (el iframe es
+// otro documento), pero sí roba el foco: se detecta ahí para traerla al frente.
+window.addEventListener("blur", () => {
+  const el = document.activeElement;
+  if (el?.tagName === "IFRAME") {
+    const win = el.closest(".doc-window");
+    if (win) bringDocToFront(win);
+  }
+});
 
 // --- Boceto (pizarra Excalidraw) ---------------------------------------------------------
 //
@@ -1369,6 +1483,38 @@ function closeSketch() {
 
 $("menu-sketch").addEventListener("click", openSketch);
 $("sketch-close").addEventListener("click", closeSketch);
+
+// --- Pet ---------------------------------------------------------------------------------
+//
+// El icono «pet» de la bandeja despliega un panel que cubre el calendario
+// (deslizándose desde arriba, como el visor de documentos sobre las notas)
+// con un gif en bucle teñido a duotono con los colores del tema (garita.css).
+// El gif vive en assets/pet/pet.gif y se puede sustituir por cualquiera; la
+// elección de mostrarlo se recuerda entre sesiones.
+
+function petOpen() {
+  return $("pet-viewer").classList.contains("open");
+}
+
+function setPet(open) {
+  if (open === petOpen()) return;
+  $("pet-viewer").classList.toggle("open", open);
+  localStorage.setItem("garita-pet", open ? "1" : "0");
+  playSound(open ? "popup" : "popup-close");
+}
+
+$("menu-pet").addEventListener("click", () => setPet(!petOpen()));
+
+$("pet-gif").addEventListener("error", () => {
+  // Sin gif: se esconde el marco y se explica dónde ponerlo.
+  $("pet-duo").classList.add("hidden");
+  $("pet-hint").classList.remove("hidden");
+});
+
+// Restaurar al arrancar (sin sonido: no ha habido interacción).
+if (localStorage.getItem("garita-pet") === "1") {
+  $("pet-viewer").classList.add("open");
+}
 
 // --- Sonidos de interfaz ---------------------------------------------------------------
 //
@@ -2038,8 +2184,9 @@ document.addEventListener("keydown", (e) => {
   }
 
   // Con el drawer de documentos abierto: flechas (o j/k) recorren la lista,
-  // Enter abre el visor, d borra y Escape cierra (primero el visor, luego el
-  // cajón). Va antes que la bandeja para quedarse con las flechas y el Enter.
+  // Enter abre el documento en una ventana, d borra y Escape cierra el cajón
+  // (las ventanas abiertas se quedan). Va antes que la bandeja para quedarse
+  // con las flechas y el Enter.
   if (drawerOpen()) {
     switch (k) {
       case "ArrowUp": case "k": case "ArrowDown": case "j": {
@@ -2064,8 +2211,7 @@ document.addEventListener("keydown", (e) => {
         return;
       case "Escape":
         stop();
-        if (viewerOpen()) closeDocViewer();
-        else setDrawer(false);
+        setDrawer(false);
         return;
       // Cualquier otra tecla sigue su curso normal con el cajón abierto.
     }
@@ -2178,14 +2324,20 @@ document.addEventListener("keydown", (e) => {
     case "u": setStatus("Deshacer no está disponible en la versión de escritorio"); break;
     case "?": openDialog("dlg-help"); break;
     case "q": invoke("quit_app"); break;
-    case "Escape":
-      if (ui.search) {
+    case "Escape": {
+      // Primero se cierran las ventanas de documentos (la de encima), luego
+      // se limpia el filtro de búsqueda.
+      const top = topDocWindow();
+      if (top) {
+        closeDocWindow(top.dataset.doc);
+      } else if (ui.search) {
         ui.search = "";
         $("todo-search").value = "";
         renderTodos();
         setStatus("Filtro quitado");
       }
       break;
+    }
   }
 });
 

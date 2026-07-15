@@ -18,17 +18,35 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
   texto. Un desplegable elige entre las generales y las de cualquier proyecto
   (las de proyecto siguen a la selección; `g` alterna generales ↔ proyecto).
   Con autoguardado, como siempre.
-- **Pomodoro** — temporizador 25/5 con vinculación a tareas y registro de focos; reloj y cronómetro.
+- **Pomodoro** — temporizador 25/5 con vinculación a tareas y registro de focos
+  (en un bloque cuadrado); reloj y cronómetro (con los botones en línea con el
+  contador).
+- **Pet** — el icono «pet» del menú de ajustes despliega un panel que cubre
+  el pomodoro en su mismo sitio (el temporizador sigue corriendo debajo) con
+  un gif en bucle teñido a duotono con los colores del tema. De serie hay un
+  gato pixelado; se cambia soltando cualquier gif en `src/assets/pet/pet.gif`
+  (mejor si es en grises o línea clara). La elección se recuerda entre
+  sesiones. La lista de **documentos**, por su parte, cubre el calendario al
+  desplegarse (el título del bloque lo indica).
 - **Imágenes** — cada to-do puede llevar una imagen adjunta (botón «imagen» o
   tecla `i`): se ve en un popup y en la lista aparece el indicador `▣`. Los
   ficheros se guardan reescalados como JPEG en `<config_dir>/xietiao/images/`
   (sólo local: la sincronización con Todoist no los envía).
 - **Papelera** — restaurar o purgar proyectos y tareas borradas.
+- **Documentos** — el icono «documentos» del menú de ajustes despliega un cajón
+  con los ficheros guardados (pdf, txt, md e imágenes, en
+  `<config_dir>/xietiao/docs/`). Cada documento se abre en su propia **ventana
+  flotante**, que se puede arrastrar con el ratón por toda la app (asidero: el
+  título y la cabecera) y redimensionar por la esquina inferior derecha; pueden
+  abrirse varios a la vez y colocarse donde más útiles sean (la última ventana
+  tocada queda encima; `Escape` la cierra). Las ventanas sobreviven al cierre
+  del cajón.
 - **Menú de ajustes** — el cuadradito junto a la barra de progreso despliega en
   la esquina una bandeja de iconos (tema, estadísticas, todoist, sincronizar,
-  escanear y papelera) que se queda abierta hasta volver a pulsarlo, sin
-  oscurecer la pantalla. Los iconos viven en `src/assets/icons/` (SVG monocromo,
-  estilo Streamline Pixel) y se tintan solos con el color de la tinta del tema.
+  escanear, papelera, documentos, boceto y pet) que se queda abierta hasta
+  volver a pulsarlo, sin oscurecer la pantalla. Los iconos viven en
+  `src/assets/icons/` (SVG monocromo, estilo Streamline Pixel) y se tintan
+  solos con el color de la tinta del tema.
 - **Escanear papel** — el icono «escanear» del menú de ajustes captura con la
   cámara una lista escrita con casillas `- [ ]` y añade las líneas con casilla
   vacía como to-dos del proyecto seleccionado (las `- [x]` se ignoran), previa
@@ -37,7 +55,7 @@ Versión de escritorio de [Xietiao](https://github.com/Shikillo/Xietiao) (el das
   y sin conexión; funciona mejor con texto impreso que manuscrito.
 - **Boceto** — el icono «boceto» del menú de ajustes abre una pizarra
   [Excalidraw](https://excalidraw.com) que cubre la columna de proyectos y
-  to-dos (como el visor de documentos cubre las notas). Funciona sin conexión
+  to-dos. Funciona sin conexión
   (la librería va vendorizada en `src/assets/excalidraw/`, ~5,5 MB), sigue el
   tema claro/oscuro de la app y la escena se guarda sola en
   `<config_dir>/xietiao/sketch.excalidraw`. Con la pizarra abierta el teclado

@@ -58,9 +58,8 @@
         </section>
 
         <!-- visor de boceto: cubre la columna entera (proyectos + to-dos)
-             deslizándose desde abajo, como el visor de documentos sobre las
-             notas. Dentro va la pizarra Excalidraw (vendorizada, se carga
-             perezosamente la primera vez que se abre). -->
+             deslizándose desde abajo. Dentro va la pizarra Excalidraw
+             (vendorizada, se carga perezosamente la primera vez que se abre). -->
         <div id="sketch-viewer">
           <div id="sketch-panel" class="block">
             <span class="block-title">boceto</span>
@@ -87,11 +86,22 @@
               <button class="btn" id="cal-assign" title="asigna el día seleccionado a la tarea seleccionada">asignar a tarea</button>
             </div>
             <table id="cal-grid"></table>
+            <!-- documentos: cubren el calendario deslizándose desde la derecha
+                 (icono «documentos» de la bandeja); el título del bloque pasa
+                 a decir «documentos» mientras está abierto. -->
+            <div id="docs-viewer">
+              <div id="docs-panel">
+                <ul id="doc-list" class="select-list grow"></ul>
+                <div class="add-row center">
+                  <button class="btn" id="doc-add" title="añadir documentos (pdf, txt, md, imágenes)">añadir</button>
+                </div>
+              </div>
+            </div>
           </section>
 
           <!-- tira de relojes (como la columna de 16 celdas de la TUI) -->
           <div id="clock-strip">
-            <section class="block clock">
+            <section class="block clock" id="blk-pomodoro">
               <span class="block-title">pomodoro</span>
               <div class="clock-value" id="timer-display">25:00</div>
               <div class="clock-sub dimmed" id="pomo-sub">foco · 0 hoy</div>
@@ -104,6 +114,15 @@
                 <button class="btn" id="timer-link-btn" title="vincular la tarea seleccionada">vincular</button>
               </div>
               <div class="clock-sub dimmed" id="timer-link"></div>
+              <!-- pet: cubre el pomodoro (que sigue corriendo debajo)
+                   deslizándose desde arriba; icono «pet» de la bandeja.
+                   El gif se tiñe a duotono con el papel y la tinta del tema. -->
+              <div id="pet-viewer">
+                <div id="pet-panel">
+                  <div id="pet-duo"><img id="pet-gif" src="assets/pet/pet.gif" alt="pet" /></div>
+                  <span class="dimmed hidden" id="pet-hint">suelta un gif en<br />assets/pet/pet.gif</span>
+                </div>
+              </div>
             </section>
             <section class="block clock">
               <span class="block-title">reloj</span>
@@ -111,23 +130,15 @@
             </section>
             <section class="block clock">
               <span class="block-title">cronómetro</span>
-              <div class="clock-value" id="stopwatch-display">00:00</div>
-              <div class="clock-btns">
+              <!-- botones en línea con el contador: el bloque queda a una fila -->
+              <div class="clock-inline">
+                <div class="clock-value" id="stopwatch-display">00:00</div>
                 <button class="btn" id="stopwatch-toggle" title="iniciar/parar">▶</button>
                 <button class="btn" id="stopwatch-reset" title="reiniciar">↺</button>
               </div>
             </section>
           </div>
 
-          <!-- drawer de documentos: se despliega desde la bandeja de ajustes y
-               se superpone a la columna de relojes deslizándose desde la derecha. -->
-          <div class="block hidden" id="docs-drawer">
-            <span class="block-title">documentos</span>
-            <ul id="doc-list" class="select-list grow"></ul>
-            <div class="add-row center">
-              <button class="btn" id="doc-add" title="añadir documentos (pdf, txt, md, imágenes)">añadir</button>
-            </div>
-          </div>
         </div>
 
         <!-- notas + bandeja de ajustes: al abrir la bandeja, las notas se
@@ -142,19 +153,6 @@
                  clic (o e/Enter) cambia al textarea para editar el texto. -->
             <div id="notes-md"></div>
             <textarea id="notes-text" class="hidden" spellcheck="false"></textarea>
-            <!-- visor de documentos: cubre el bloque de notas deslizándose desde
-                 abajo; el contenedor exterior solo recorta durante la animación. -->
-            <div id="doc-viewer">
-              <div id="doc-viewer-panel">
-                <div class="add-row" id="doc-view-head">
-                  <span id="doc-view-title" class="dimmed"></span>
-                  <button class="btn" id="doc-view-close" title="cerrar el visor">✕</button>
-                </div>
-                <iframe id="doc-view-frame" class="hidden" title="documento"></iframe>
-                <pre id="doc-view-text" class="hidden"></pre>
-                <img id="doc-view-img" class="hidden" alt="documento" />
-              </div>
-            </div>
           </section>
           <div id="settings-tray" class="hidden">
             <button class="tray-btn" id="menu-theme" title="tema">
@@ -180,6 +178,9 @@
             </button>
             <button class="tray-btn" id="menu-sketch" title="boceto">
               <span class="icon" style="--icon: url('assets/icons/boceto.svg')"></span>
+            </button>
+            <button class="tray-btn" id="menu-pet" title="pet">
+              <span class="icon" style="--icon: url('assets/icons/pet.svg')"></span>
             </button>
           </div>
         </div>

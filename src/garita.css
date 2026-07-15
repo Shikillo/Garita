@@ -302,12 +302,83 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 /* --- Tira de relojes --------------------------------------------------------------------- */
 
 .clock { align-items: center; gap: 6px; padding: 14px 8px 10px; flex: none; }
+/* Pomodoro cuadrado (el cronómetro, a una fila, le cede el alto). */
+#blk-pomodoro { aspect-ratio: 1; justify-content: center; }
+/* Contador y botones en la misma fila (cronómetro). */
+.clock-inline { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .clock-value { font-weight: bold; font-size: 17px; text-align: center; }
 .clock-value.running { text-decoration: underline; }
 .clock-sub { font-size: 0.75em; text-align: center; min-height: 1em; }
 .clock-btns { display: flex; gap: 4px; justify-content: center; }
 .clock-btns .btn { font-size: 11px; padding: 2px 6px; }
 #timer-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Pet: visor que cubre el pomodoro con un gif a duotono ------------------------------ */
+
+/* El contenedor recorta dentro del bloque del pomodoro (que conserva su
+   título y sigue corriendo debajo) y el panel se desliza desde la derecha,
+   ocupando exactamente el tamaño real del bloque. */
+#pet-viewer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; /* cerrado no estorba al calendario */
+  visibility: hidden;   /* cerrado, invisible de verdad (sin foco fantasma) */
+  transition: visibility 0.25s;
+  z-index: 4;
+}
+#pet-viewer.open { visibility: visible; }
+#pet-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  padding: 12px 10px 8px; /* el mismo respiro interior que un .block */
+  transform: translateX(102%); /* aparece de derecha a izquierda */
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#pet-viewer.open #pet-panel {
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Duotono con los colores del tema: el gif en grises + dos velos con mezcla
+   (sombras → tinta, luces → papel; en tema oscuro, al revés: las líneas
+   claras del dibujo toman la tinta clara). Funciona con el gif animándose. */
+#pet-duo {
+  position: relative;
+  align-self: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#pet-duo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: grayscale(1);
+  image-rendering: pixelated;
+}
+#pet-duo::before,
+#pet-duo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#pet-duo::before { background: var(--ink); mix-blend-mode: lighten; }
+#pet-duo::after { background: var(--paper); mix-blend-mode: darken; }
+body.dark #pet-duo::before { background: var(--paper); }
+body.dark #pet-duo::after { background: var(--ink); }
+#pet-hint { text-align: center; font-size: 0.75em; }
+@media (prefers-reduced-motion: reduce) {
+  #pet-panel { transition: none; }
+}
 
 /* --- Notas ---------------------------------------------------------------------------------- */
 
@@ -465,28 +536,35 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 .tray-btn.selected { background: var(--ink); color: var(--paper); }
 .tray-btn .icon { width: 18px; height: 18px; flex: none; }
 
-/* --- Drawer de documentos --------------------------------------------------------------------------- */
+/* --- Documentos (visor sobre el calendario) ----------------------------------------------------------- */
 
-/* Cajón de documentos: bloque opaco que se superpone a la columna de relojes
-   (misma anchura) deslizándose desde la derecha. Como en la bandeja, el
-   display se fuerza por encima del .hidden global para poder animar. */
-#docs-drawer {
-  display: flex !important;
-  position: absolute; /* pisa el position: relative de .block */
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 170px;
-  background: var(--paper);
+/* La lista de documentos cubre el calendario por dentro deslizándose desde
+   arriba (el contenedor solo recorta la animación); mientras está abierta,
+   el título del bloque pasa a decir «documentos» (app.js). */
+#docs-viewer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none; /* cerrado no estorba al calendario */
+  visibility: hidden;   /* cerrado, invisible de verdad (sin foco fantasma) */
+  transition: visibility 0.25s;
   z-index: 5;
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              opacity 0.2s ease, visibility 0.25s;
 }
-#docs-drawer.hidden {
-  /* +14px: que el borde y su sombra de título salgan del todo por la derecha */
-  transform: translateX(calc(100% + 14px));
-  opacity: 0;
-  visibility: hidden; /* plegado, que no reciba foco ni clics */
+#docs-viewer.open { visibility: visible; }
+#docs-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--paper);
+  padding: 12px 10px 8px; /* el mismo respiro interior que un .block */
+  transform: translateY(-102%); /* aparece de arriba a abajo */
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#docs-viewer.open #docs-panel {
+  transform: none;
+  pointer-events: auto;
 }
 #doc-list li { cursor: default; }
 #doc-list .todo-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
@@ -499,52 +577,48 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 #doc-list li:hover .doc-del,
 #doc-list li.selected .doc-del { visibility: visible; }
 
-/* Visor de documentos: cubre el bloque de notas por dentro deslizándose desde
-   abajo. El contenedor exterior solo recorta (overflow) para que el panel no
-   asome bajo el bloque durante la animación; el título «notas» queda fuera. */
-#doc-viewer {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none; /* cerrado no estorba al textarea de notas */
-  /* Cerrado, invisible de verdad: si no, el ✕ del panel seguiría siendo
-     enfocable y un Tab desde las notas haría scroll del recorte para
-     mostrarlo (el «panel fantasma»). La transición retrasa el ocultado
-     hasta que el deslizamiento de salida termina. */
-  visibility: hidden;
-  transition: visibility 0.25s;
-  z-index: 4;
-}
-#doc-viewer.open { visibility: visible; }
-#doc-viewer-panel {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* Ventanas de documentos: cada documento se abre en una ventana flotante
+   (un .block opaco con su título sobre el borde) que se arrastra por toda la
+   app con el ratón —asidero: título, cabecera, bordes y padding— y se
+   redimensiona por la esquina inferior derecha. Pueden verse varias a la vez;
+   la última tocada queda encima (z-index que asigna el JS). */
+.doc-window {
+  position: fixed;
   background: var(--paper);
-  padding: 12px 10px 8px; /* el mismo respiro interior que un .block */
-  transform: translateY(102%);
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 5px 5px 0 var(--ink-faint); /* sombra dura, como recortes apilados */
+  cursor: grab;
+  will-change: transform;
+  /* Al abrirse se desliza desde abajo de la pantalla hasta su sitio, con la
+     misma curva que los diálogos. */
+  animation: doc-win-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-#doc-viewer.open #doc-viewer-panel {
-  transform: none;
-  pointer-events: auto;
+/* Cierre: vuelve deslizándose hacia abajo (la clase la pone closeDocWindow). */
+.doc-window.closing {
+  animation: doc-win-out 0.22s cubic-bezier(0.6, 0, 0.9, 0.4) forwards;
+  pointer-events: none; /* saliendo, ya no se arrastra ni se clica */
 }
-#doc-view-head { flex: none; }
-#doc-view-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 100vh: parte de (y vuelve a) fuera de la pantalla esté donde esté la ventana. */
+@keyframes doc-win-in { from { transform: translateY(100vh); } }
+@keyframes doc-win-out { to { transform: translateY(100vh); } }
+@media (prefers-reduced-motion: reduce) {
+  .doc-window, .doc-window.closing { animation: none; }
 }
-#doc-view-frame {
+body.doc-dragging { user-select: none; }
+body.doc-dragging .doc-window { cursor: grabbing; }
+/* Arrastrando, los iframes (pdf) no comen el puntero: romperían el gesto. */
+body.doc-dragging iframe { pointer-events: none; }
+.doc-win-head {
+  flex: none;
+  justify-content: flex-end;
+}
+.doc-win-frame {
   flex: 1;
   min-height: 0;
   width: 100%;
   border: 1px solid var(--ink);
+  cursor: auto;
 }
-#doc-view-text {
+.doc-win-text {
   flex: 1;
   min-height: 0;
   margin: 0;
@@ -555,11 +629,29 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
   user-select: text;
   cursor: text;
 }
-#doc-view-img {
+.doc-win-img {
   flex: 1;
   min-height: 0;
   object-fit: contain;
   border: 1px solid var(--ink);
+  cursor: auto;
+}
+.doc-win-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+}
+.doc-win-resize::before {
+  content: "◢";
+  position: absolute;
+  right: 2px;
+  bottom: -1px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-dim);
 }
 /* --- Visor de boceto (Excalidraw) ------------------------------------------------------------------ */
 
@@ -605,7 +697,7 @@ input:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: 1px
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #docs-drawer, #doc-viewer-panel, #sketch-panel { transition: none; }
+  #docs-panel, #sketch-panel { transition: none; }
 }
 
 /* --- Barra de progreso ---------------------------------------------------------------------------- */
