@@ -70,7 +70,9 @@ fn add_project(state: State<AppState>, name: String) -> Store {
     with_store(&state, |s| {
         let name = name.trim();
         if !name.is_empty() {
-            s.projects.push(Project::new(name));
+            let mut p = Project::new(name);
+            p.id = s.new_pid();
+            s.projects.push(p);
         }
     })
 }
@@ -387,14 +389,38 @@ fn get_todo_image(name: String) -> Result<String, String> {
 // Los documentos viven como ficheros en `<config_dir>/xietiao/docs/`; no tocan
 // el `Store`: la lista autoritativa es el propio directorio. El frontend los
 // manda y los pide codificados en base64, como las imágenes adjuntas.
+//
+// Alcance: los documentos «generales» están en la raíz de `docs/`; los de un
+// proyecto viven en `docs/p<id>/`, donde `<id>` es el id estable del proyecto
+// (no su índice), para que sobrevivan a renombrados y reordenamientos. El
+// frontend indica el alcance con `project`: `None` = generales, `Some(i)` = el
+// proyecto en ese índice.
 
-/// Directorio de documentos: `<config_dir>/xietiao/docs/`.
+/// Directorio raíz de documentos: `<config_dir>/xietiao/docs/`.
 fn docs_dir() -> PathBuf {
     Store::config_dir().join("docs")
 }
 
+/// Carpeta de documentos del alcance pedido: la raíz (generales) o `docs/p<id>/`.
+fn doc_folder(store: &Store, project: Option<usize>) -> Result<PathBuf, String> {
+    match project {
+        None => Ok(docs_dir()),
+        Some(i) => {
+            let id = store.projects.get(i).ok_or("proyecto no válido")?.id;
+            Ok(docs_dir().join(format!("p{id}")))
+        }
+    }
+}
+
 /// Extensiones de documento admitidas.
-const DOC_EXTS: &[&str] = &["pdf", "txt", "md", "png", "jpg", "jpeg", "gif", "webp"];
+const DOC_EXTS: &[&str] = &[
+    // texto y datos (se previsualizan como texto)
+    "txt", "md", "csv", "json", "log", "rtf",
+    // documentos, hojas de cálculo y presentaciones (se abren con el sistema)
+    "pdf", "doc", "docx", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp",
+    // imágenes
+    "png", "jpg", "jpeg", "gif", "webp", "svg",
+];
 
 /// Comprueba que el nombre es un fichero plano (sin rutas) con extensión admitida.
 fn valid_doc_name(name: &str) -> bool {
@@ -407,10 +433,9 @@ fn valid_doc_name(name: &str) -> bool {
             .unwrap_or(false)
 }
 
-/// Lista los documentos guardados, ordenados alfabéticamente.
-#[tauri::command]
-fn list_docs() -> Vec<String> {
-    let mut names: Vec<String> = fs::read_dir(docs_dir())
+/// Lista los ficheros de documento de una carpeta, ordenados alfabéticamente.
+fn list_doc_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .filter_map(|e| e.file_name().into_string().ok())
@@ -422,16 +447,32 @@ fn list_docs() -> Vec<String> {
     names
 }
 
-/// Guarda un documento (bytes en base64). Si el nombre ya existe, añade un
-/// sufijo numérico antes de la extensión. Devuelve la lista actualizada.
-/// (Async: los PDF pueden ser grandes y así no bloquean el hilo principal.)
+/// Lista los documentos del alcance pedido, ordenados alfabéticamente.
 #[tauri::command]
-async fn add_doc(name: String, data: String) -> Result<Vec<String>, String> {
+fn list_docs(state: State<AppState>, project: Option<usize>) -> Result<Vec<String>, String> {
+    let store = state.0.lock().unwrap();
+    Ok(list_doc_files(&doc_folder(&store, project)?))
+}
+
+/// Guarda un documento (bytes en base64) en el alcance pedido. Si el nombre ya
+/// existe, añade un sufijo numérico antes de la extensión. Devuelve la lista
+/// actualizada. (Async: los ficheros pueden ser grandes y así no bloquean el
+/// hilo principal; el mutex solo se sostiene para resolver la carpeta.)
+#[tauri::command]
+async fn add_doc(
+    state: State<'_, AppState>,
+    project: Option<usize>,
+    name: String,
+    data: String,
+) -> Result<Vec<String>, String> {
     if !valid_doc_name(&name) {
-        return Err("nombre de documento no válido (formatos: pdf, txt, md, imágenes)".into());
+        return Err("formato no admitido (pdf, office, texto o imagen)".into());
     }
+    let dir = {
+        let store = state.0.lock().unwrap();
+        doc_folder(&store, project)?
+    };
     let bytes = BASE64.decode(data).map_err(|e| e.to_string())?;
-    let dir = docs_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stem = Path::new(&name)
         .file_stem()
@@ -448,28 +489,73 @@ async fn add_doc(name: String, data: String) -> Result<Vec<String>, String> {
         target = dir.join(format!("{stem} ({n}).{ext}"));
     }
     fs::write(&target, bytes).map_err(|e| e.to_string())?;
-    Ok(list_docs())
+    Ok(list_doc_files(&dir))
 }
 
 /// Devuelve un documento como base64 (el MIME lo deduce el frontend).
 #[tauri::command]
-async fn get_doc(name: String) -> Result<String, String> {
+async fn get_doc(
+    state: State<'_, AppState>,
+    project: Option<usize>,
+    name: String,
+) -> Result<String, String> {
     if !valid_doc_name(&name) {
         return Err("nombre de documento no válido".into());
     }
-    let bytes = fs::read(docs_dir().join(&name)).map_err(|e| e.to_string())?;
+    let path = {
+        let store = state.0.lock().unwrap();
+        doc_folder(&store, project)?.join(&name)
+    };
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
     Ok(BASE64.encode(bytes))
 }
 
 /// Borra un documento del disco (definitivo: los documentos no pasan por la
 /// papelera). Devuelve la lista actualizada.
 #[tauri::command]
-fn delete_doc(name: String) -> Result<Vec<String>, String> {
+fn delete_doc(
+    state: State<AppState>,
+    project: Option<usize>,
+    name: String,
+) -> Result<Vec<String>, String> {
     if !valid_doc_name(&name) {
         return Err("nombre de documento no válido".into());
     }
-    fs::remove_file(docs_dir().join(&name)).map_err(|e| e.to_string())?;
-    Ok(list_docs())
+    let dir = {
+        let store = state.0.lock().unwrap();
+        doc_folder(&store, project)?
+    };
+    fs::remove_file(dir.join(&name)).map_err(|e| e.to_string())?;
+    Ok(list_doc_files(&dir))
+}
+
+/// Abre un documento con la aplicación por defecto del sistema. Para formatos
+/// que el visor no sabe previsualizar (office, etc.).
+#[tauri::command]
+fn open_doc_external(
+    state: State<AppState>,
+    project: Option<usize>,
+    name: String,
+) -> Result<(), String> {
+    if !valid_doc_name(&name) {
+        return Err("nombre de documento no válido".into());
+    }
+    let path = {
+        let store = state.0.lock().unwrap();
+        doc_folder(&store, project)?.join(&name)
+    };
+    if !path.exists() {
+        return Err("el documento no existe".into());
+    }
+    #[cfg(target_os = "macos")]
+    let cmd = "open";
+    #[cfg(not(target_os = "macos"))]
+    let cmd = "xdg-open";
+    std::process::Command::new(cmd)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // --- Boceto (pizarra Excalidraw) ---------------------------------------------
@@ -568,6 +654,7 @@ fn restore_trash(state: State<AppState>, item: usize) -> Store {
                     Some(i) => s.projects[i].todos.push(todo),
                     None => {
                         let mut p = Project::new(project);
+                        p.id = s.new_pid();
                         p.todos.push(todo);
                         s.projects.push(p);
                     }
@@ -584,7 +671,11 @@ fn purge_trash(state: State<AppState>, item: usize) -> Store {
             // Al eliminar definitivamente, sus imágenes adjuntas también.
             let entry = s.trash.remove(item);
             match &entry.kind {
-                TrashKind::Project(p) => p.todos.iter().for_each(|t| remove_image_file(&t.image)),
+                TrashKind::Project(p) => {
+                    p.todos.iter().for_each(|t| remove_image_file(&t.image));
+                    // Y su carpeta de documentos (docs/p<id>/), si la tenía.
+                    let _ = fs::remove_dir_all(docs_dir().join(format!("p{}", p.id)));
+                }
                 TrashKind::Todo { todo, .. } => remove_image_file(&todo.image),
             }
         }
@@ -860,6 +951,7 @@ fn main() {
             add_doc,
             get_doc,
             delete_doc,
+            open_doc_external,
             get_sketch,
             set_sketch,
             get_pet,

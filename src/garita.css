@@ -402,8 +402,9 @@ body.dark #pet-duo::after { background: var(--ink); }
 }
 #notes-text:focus { outline: none; }
 
-/* Selector de notas: generales o las de cualquier proyecto. */
-#notes-scope {
+/* Selector de alcance (notas y documentos): generales o de un proyecto. */
+#notes-scope,
+#docs-scope {
   font: inherit;
   color: var(--ink);
   background: var(--paper);
@@ -411,7 +412,9 @@ body.dark #pet-duo::after { background: var(--ink); }
   padding: 1px 4px;
   max-width: 100%;
 }
-#notes-scope:focus { outline: none; }
+#notes-scope:focus,
+#docs-scope:focus { outline: none; }
+#docs-scope { width: 100%; }
 
 /* Vista markdown de las notas (un clic cambia al textarea). */
 #notes-md {
@@ -640,6 +643,66 @@ body.doc-dragging iframe { pointer-events: none; }
   border: 1px solid var(--ink);
   cursor: auto;
 }
+/* Markdown renderizado dentro del visor (mismo dialecto que las notas, en
+   modo lectura). Reproduce los estilos de #notes-md, pero en su propio marco. */
+.doc-win-md {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  overflow: auto;
+  user-select: text;
+  cursor: text;
+}
+.doc-win-md p { margin: 0 0 0.35em; }
+.doc-win-md h1, .doc-win-md h2, .doc-win-md h3 { margin: 0.4em 0 0.25em; font-weight: bold; }
+.doc-win-md h1:first-child, .doc-win-md h2:first-child, .doc-win-md h3:first-child { margin-top: 0; }
+.doc-win-md h1 { font-size: 1.25em; text-decoration: underline; }
+.doc-win-md h2 { font-size: 1.1em; }
+.doc-win-md h3 { font-size: 1em; }
+.doc-win-md ul { list-style: none; margin: 0 0 0.35em; padding-left: 0.2em; }
+.doc-win-md ul li:not(.md-task)::before { content: "- "; color: var(--ink-dim); }
+.doc-win-md ol { margin: 0 0 0.35em; padding-left: 1.8em; }
+.doc-win-md li.md-task.done { color: var(--ink-dim); text-decoration: line-through; }
+.doc-win-md li.md-task .md-check { text-decoration: none; display: inline-block; }
+.doc-win-md code {
+  font-family: inherit;
+  border: 1px solid var(--ink-faint);
+  padding: 0 3px;
+}
+.doc-win-md pre {
+  margin: 0 0 0.35em;
+  padding: 4px 6px;
+  border: 1px solid var(--ink-faint);
+  overflow-x: auto;
+}
+.doc-win-md pre code { border: none; padding: 0; }
+.doc-win-md blockquote {
+  margin: 0 0 0.35em;
+  padding-left: 8px;
+  border-left: 2px solid var(--ink-dim);
+  color: var(--ink-dim);
+}
+.doc-win-md hr { border: none; border-top: 1px solid var(--ink-dim); margin: 0.5em 0; }
+.doc-win-md a { color: var(--ink); }
+/* Formatos sin previsualización (office, etc.): solo se ofrece abrirlos con
+   la aplicación del sistema. El panel entero sigue siendo asidero de arrastre. */
+.doc-win-ext {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--ink);
+  text-align: center;
+}
+.doc-win-ext-msg {
+  margin: 0;
+  color: var(--ink-dim);
+}
 .doc-win-resize {
   position: absolute;
   right: 0;
@@ -657,6 +720,52 @@ body.doc-dragging iframe { pointer-events: none; }
   line-height: 1;
   color: var(--ink-dim);
 }
+
+/* Calculadora: una ventana de documento (misma piel y arrastre) con visor
+   arriba y un teclado 4×5 debajo que llena el resto de la ventana. */
+.calc-window:focus { outline: none; }
+.calc-window:focus-within { box-shadow: 5px 5px 0 var(--ink-faint), inset 0 0 0 1px var(--ink); }
+.calc-screen {
+  flex: none;
+  border: 1px solid var(--ink);
+  padding: 6px 8px;
+  text-align: right;
+  overflow: hidden;
+  cursor: default;
+}
+.calc-expr {
+  min-height: 1em;
+  font-size: 0.85em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calc-out {
+  font-size: 1.6em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calc-pad {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+}
+.calc-key {
+  font-size: 14px;
+  padding: 0;
+  cursor: default;
+}
+.calc-fn { font-size: 12px; color: var(--ink-dim); }
+.calc-op { color: var(--ink-dim); }
+.calc-wide { grid-column: span 2; } /* «=» llena la última fila (que tiene 4 celdas) */
+.calc-eq { background: var(--ink); color: var(--paper); }
+.calc-eq:hover { background: var(--ink); }
+
 /* --- Visor de boceto (Excalidraw) ------------------------------------------------------------------ */
 
 /* Como el visor de documentos, pero cubriendo la columna izquierda entera

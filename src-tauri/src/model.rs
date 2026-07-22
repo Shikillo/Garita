@@ -181,6 +181,12 @@ impl Todo {
 /// Un proyecto con su lista de to-dos y sus notas asociadas.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
+    /// Identificador estable: no cambia al renombrar ni reordenar, así que sirve
+    /// para asociarle ficheros en disco (p. ej. sus documentos, en `docs/p<id>/`).
+    /// `0` significa «sin asignar» (proyectos de versiones antiguas); se les da
+    /// un id al cargar, en `Store::migrate_pids`.
+    #[serde(default)]
+    pub id: u64,
     pub name: String,
     #[serde(default)]
     pub todos: Vec<Todo>,
@@ -194,6 +200,7 @@ pub struct Project {
 impl Project {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
+            id: 0, // lo asigna quien lo inserta en el Store (Store::new_pid).
             name: name.into(),
             todos: Vec::new(),
             notes: String::new(),
@@ -266,6 +273,10 @@ pub struct Store {
     /// en la próxima sincronización (y de no re-importarse mientras tanto).
     #[serde(default)]
     pub todoist_deleted: Vec<String>,
+    /// Siguiente id de proyecto a repartir. Persistido para no reutilizar nunca
+    /// un id (evita que carpetas de documentos huérfanas se re-asocien).
+    #[serde(default)]
+    pub next_pid: u64,
 }
 
 impl Store {
@@ -287,10 +298,34 @@ impl Store {
     /// Carga el estado desde disco. Si no existe o está corrupto, devuelve uno vacío.
     pub fn load() -> Self {
         let path = Self::data_path();
-        match fs::read_to_string(&path) {
+        let mut store: Self = match fs::read_to_string(&path) {
             Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
             Err(_) => Self::default(),
+        };
+        store.migrate_pids();
+        store
+    }
+
+    /// Asegura que todo proyecto tiene un id estable (>0). Los proyectos de
+    /// versiones antiguas llegan con `id == 0`; se les reparte uno preservando
+    /// el orden, de forma determinista (misma entrada → mismos ids).
+    fn migrate_pids(&mut self) {
+        let max = self.projects.iter().map(|p| p.id).max().unwrap_or(0);
+        let mut next = self.next_pid.max(max + 1).max(1);
+        for p in &mut self.projects {
+            if p.id == 0 {
+                p.id = next;
+                next += 1;
+            }
         }
+        self.next_pid = next;
+    }
+
+    /// Reparte un id de proyecto nuevo, sin reutilizar ninguno anterior.
+    pub fn new_pid(&mut self) -> u64 {
+        let id = self.next_pid.max(1);
+        self.next_pid = id + 1;
+        id
     }
 
     /// Guarda el estado en disco, creando el directorio si hace falta.

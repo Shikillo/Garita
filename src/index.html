@@ -91,9 +91,12 @@
                  a decir «documentos» mientras está abierto. -->
             <div id="docs-viewer">
               <div id="docs-panel">
+                <div class="add-row">
+                  <select id="docs-scope" title="qué documentos se ven (generales o de un proyecto)"></select>
+                </div>
                 <ul id="doc-list" class="select-list grow"></ul>
                 <div class="add-row center">
-                  <button class="btn" id="doc-add" title="añadir documentos (pdf, txt, md, imágenes)">añadir</button>
+                  <button class="btn" id="doc-add" title="añadir documentos (pdf, office, texto, imágenes)">añadir</button>
                 </div>
               </div>
             </div>
@@ -181,6 +184,9 @@
             </button>
             <button class="tray-btn" id="menu-pet" title="pet">
               <span class="icon" style="--icon: url('assets/icons/pet.svg')"></span>
+            </button>
+            <button class="tray-btn" id="menu-calc" title="calculadora">
+              <span class="icon" style="--icon: url('assets/icons/calc.svg')"></span>
             </button>
           </div>
         </div>
@@ -389,7 +395,7 @@
   <input type="file" id="todo-image-file" accept="image/*" class="hidden" />
 
   <!-- Selector de ficheros para el drawer de documentos (se abre por JS). -->
-  <input type="file" id="doc-file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden" />
+  <input type="file" id="doc-file" accept=".txt,.md,.csv,.json,.log,.rtf,.pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.ppt,.pptx,.odp,.png,.jpg,.jpeg,.gif,.webp,.svg" multiple class="hidden" />
 
   <!-- Filtro del efecto «impresión» (body.fx-print): la turbulencia desplaza
        los bordes (temblor de imprenta) y el desenfoque + contraste engorda

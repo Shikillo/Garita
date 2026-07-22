@@ -16,6 +16,8 @@ const ui = {
   search: "",
   notesScope: "general", // "general" | "project"
   notesProject: 0,       // proyecto cuyas notas se ven cuando notesScope = "project"
+  docsScope: "general",  // "general" | "project"
+  docsProject: 0,        // proyecto cuyos documentos se ven cuando docsScope = "project"
   calYear: 0,
   calMonth: 0,       // 1..12
   selDate: null,     // "YYYY-MM-DD"
@@ -74,9 +76,10 @@ function currentProject() {
   return store.projects[ui.project] ?? null;
 }
 
-/** Con notas de proyecto a la vista, siguen al proyecto seleccionado. */
+/** Con notas o documentos de proyecto a la vista, siguen al proyecto seleccionado. */
 function notesFollow() {
   if (ui.notesScope === "project") ui.notesProject = ui.project;
+  if (ui.docsScope === "project") ui.docsProject = ui.project;
 }
 
 function selectedTodo() {
@@ -95,6 +98,9 @@ function renderAll() {
   renderProgress();
   renderPomodoroLink();
   renderFocus();
+  // El cajón de documentos no se pinta desde el store (su lista vive en disco):
+  // si está abierto, se re-lista para seguir al proyecto/alcance en curso.
+  if (drawerOpen()) refreshDocs();
 }
 
 function renderProjects() {
@@ -351,7 +357,10 @@ function mdInline(s) {
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" title="$2">$1</a>');
 }
 
-function renderNotesMd(text) {
+/** Convierte markdown a HTML (el mismo dialecto mínimo en notas y documentos).
+ *  Las casillas llevan `data-line` para poder alternarlas donde el origen sea
+ *  editable (notas); en el visor de documentos son solo decorativas. */
+function mdToHtml(text) {
   const out = [];
   let list = null;  // "ul" | "ol" abierta
   let code = false; // dentro de bloque ```
@@ -385,7 +394,11 @@ function renderNotesMd(text) {
   });
   if (code) out.push("</code></pre>");
   closeList();
-  $("notes-md").innerHTML = out.join("") ||
+  return out.join("");
+}
+
+function renderNotesMd(text) {
+  $("notes-md").innerHTML = mdToHtml(text) ||
     '<p class="dimmed">vacío — clic para escribir (admite markdown)</p>';
 }
 
@@ -1095,8 +1108,7 @@ $("settings-btn").addEventListener("click", () => setTray(!trayOpen()));
 
 const DOC_MIME = {
   pdf: "application/pdf",
-  txt: "text/plain; charset=utf-8",
-  md: "text/plain; charset=utf-8",
+  svg: "image/svg+xml",
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
@@ -1104,8 +1116,25 @@ const DOC_MIME = {
   webp: "image/webp",
 };
 
+// Extensiones que se previsualizan como texto plano y como imagen; el resto
+// (office, etc.) no se previsualiza: se ofrece abrirlas con la app del sistema.
+const DOC_TEXT_EXTS = ["txt", "md", "csv", "json", "log"];
+const DOC_IMG_EXTS = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
+
 let docs = [];   // nombres de fichero, como los devuelve el backend
 let docSel = -1; // documento seleccionado con teclado; -1 = sin selección
+
+/** Alcance actual de los documentos como lo espera el backend: `null` para los
+ *  generales o el índice del proyecto seleccionado. */
+function currentDocsScope() {
+  return ui.docsScope === "project" ? ui.docsProject : null;
+}
+
+/** Clave única de una ventana de documento (mismo nombre puede existir en
+ *  proyectos distintos, así que el alcance forma parte de la clave). */
+function docKey(scope, name) {
+  return `${scope == null ? "g" : "p" + scope} ${name}`;
+}
 
 function drawerOpen() {
   return $("docs-viewer").classList.contains("open");
@@ -1121,9 +1150,26 @@ function setDrawer(open, { keyboard = false } = {}) {
   renderCalTitle(); // el título del bloque alterna calendario ↔ documentos
 }
 
+/** Repuebla el desplegable de alcance: «generales» + un asiento por proyecto
+ *  (no archivado). Los nombres pueden cambiar, así que se rehace cada vez. */
+function renderDocsScope() {
+  const sel = $("docs-scope");
+  sel.innerHTML = "";
+  sel.add(new Option("documentos generales", "general"));
+  store.projects.forEach((p, i) => {
+    if (!p.archived) sel.add(new Option(`de «${p.name}»`, String(i)));
+  });
+  const seen = store.projects[ui.docsProject];
+  if (ui.docsScope === "project" && (!seen || seen.archived)) {
+    ui.docsScope = "general"; // el proyecto visto ya no existe (o está archivado)
+  }
+  sel.value = ui.docsScope === "project" ? String(ui.docsProject) : "general";
+}
+
 async function refreshDocs() {
+  renderDocsScope();
   try {
-    docs = await invoke("list_docs");
+    docs = await invoke("list_docs", { project: currentDocsScope() });
   } catch (e) {
     setStatus(`Error: ${e}`);
     docs = [];
@@ -1151,20 +1197,21 @@ function renderDocs() {
     li.addEventListener("click", () => {
       docSel = i;
       renderDocs();
-      openDocViewer(name);
+      openDocViewer(name, currentDocsScope());
     });
     li.querySelector(".doc-del").addEventListener("click", (e) => {
       e.stopPropagation(); // que no abra el visor de paso
-      askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name));
+      const scope = currentDocsScope();
+      askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name, scope));
     });
     list.appendChild(li);
   });
 }
 
-async function deleteDoc(name) {
+async function deleteDoc(name, scope) {
   try {
-    docs = await invoke("delete_doc", { name });
-    closeDocWindow(name); // si estaba abierto en una ventana, se cierra
+    docs = await invoke("delete_doc", { name, project: scope });
+    closeDocWindow(docKey(scope, name)); // si estaba abierto en una ventana, se cierra
     playSound("delete");
     setStatus(`«${name}» borrado`);
   } catch (e) {
@@ -1179,6 +1226,13 @@ $("menu-docs").addEventListener("click", () =>
   setDrawer(!drawerOpen(), { keyboard: traySel >= 0 }));
 
 $("doc-add").addEventListener("click", () => $("doc-file").click());
+
+$("docs-scope").addEventListener("change", () => {
+  const v = $("docs-scope").value;
+  ui.docsScope = v === "general" ? "general" : "project";
+  if (v !== "general") ui.docsProject = Number(v);
+  refreshDocs();
+});
 
 /** Base64 de un ArrayBuffer, por trozos (btoa no traga binarios grandes de golpe). */
 function b64encode(buf) {
@@ -1195,9 +1249,10 @@ $("doc-file").addEventListener("change", async (e) => {
   e.target.value = ""; // permite volver a elegir el mismo fichero
   if (!files.length) return;
   setStatus(files.length === 1 ? "Guardando documento…" : "Guardando documentos…");
+  const scope = currentDocsScope();
   try {
     for (const f of files) {
-      docs = await invoke("add_doc", { name: f.name, data: b64encode(await f.arrayBuffer()) });
+      docs = await invoke("add_doc", { name: f.name, data: b64encode(await f.arrayBuffer()), project: scope });
     }
     playSound("add-edit");
     setStatus(files.length === 1
@@ -1213,9 +1268,10 @@ $("doc-file").addEventListener("change", async (e) => {
 // por toda la app (asidero: el título y la fila superior) y redimensionable
 // por la esquina inferior derecha. Pueden abrirse varios a la vez y la última
 // ventana tocada queda encima. Dentro, iframe para pdf (el visor nativo del
-// webview), <pre> para texto e <img> para imágenes.
+// webview), <pre> para texto, <img> para imágenes; y para el resto (office,
+// etc.) un panel que ofrece abrirlos con la aplicación del sistema.
 
-const docWindows = new Map(); // nombre → { win, url } (url: blob a revocar al cerrar)
+const docWindows = new Map(); // docKey(scope,name) → { win, url } (url: blob a revocar al cerrar)
 const DOC_WIN_Z = 40;         // banda propia: sobre cajón (5) y boceto (6), bajo los diálogos (100)
 let docWinCascade = 0;        // cada ventana nueva se desplaza en diagonal
 
@@ -1270,19 +1326,16 @@ function dragDocWindow(win, e, mode) {
   win.addEventListener("pointercancel", onUp);
 }
 
-async function openDocViewer(name) {
+async function openDocViewer(name, scope) {
   // Ya abierto: no se duplica, se trae al frente.
-  const existing = docWindows.get(name);
+  const key = docKey(scope, name);
+  const existing = docWindows.get(key);
   if (existing) return bringDocToFront(existing.win);
 
-  let b64;
-  try {
-    b64 = await invoke("get_doc", { name });
-  } catch (e) {
-    return setStatus(`Error: ${e}`);
-  }
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const ext = name.split(".").pop().toLowerCase();
+  const isText = DOC_TEXT_EXTS.includes(ext);
+  const isImg = DOC_IMG_EXTS.includes(ext);
+  const previewable = ext === "pdf" || isText || isImg;
 
   const win = document.createElement("section");
   win.className = "block doc-window";
@@ -1298,28 +1351,53 @@ async function openDocViewer(name) {
   close.className = "btn";
   close.title = "cerrar";
   close.textContent = "✕";
-  close.addEventListener("click", () => closeDocWindow(name));
+  close.addEventListener("click", () => closeDocWindow(key));
   head.appendChild(close);
 
   let url = null;
   let content;
-  if (ext === "txt" || ext === "md") {
-    content = document.createElement("pre");
-    content.className = "doc-win-text";
-    content.textContent = new TextDecoder().decode(bytes);
-  } else {
-    url = URL.createObjectURL(new Blob([bytes], { type: DOC_MIME[ext] ?? "application/octet-stream" }));
-    if (ext === "pdf") {
-      content = document.createElement("iframe");
-      content.className = "doc-win-frame";
-      content.title = name;
-      content.src = url;
-    } else {
-      content = document.createElement("img");
-      content.className = "doc-win-img";
-      content.alt = name;
-      content.src = url;
+  if (previewable) {
+    // Solo los formatos que se previsualizan necesitan bajar los bytes.
+    let b64;
+    try {
+      b64 = await invoke("get_doc", { name, project: scope });
+    } catch (e) {
+      return setStatus(`Error: ${e}`);
     }
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    if (ext === "md") {
+      // Markdown: se renderiza como en las notas (mismo dialecto). Sus casillas
+      // son decorativas aquí; los enlaces se abren en el navegador del sistema.
+      content = document.createElement("div");
+      content.className = "doc-win-md";
+      content.innerHTML = mdToHtml(new TextDecoder().decode(bytes));
+      content.addEventListener("click", async (ev) => {
+        const link = ev.target.closest("a[href]");
+        if (!link) return;
+        ev.preventDefault();
+        try { await invoke("open_url", { url: link.href }); }
+        catch (err) { setStatus(`Error: ${err}`); }
+      });
+    } else if (isText) {
+      content = document.createElement("pre");
+      content.className = "doc-win-text";
+      content.textContent = new TextDecoder().decode(bytes);
+    } else {
+      url = URL.createObjectURL(new Blob([bytes], { type: DOC_MIME[ext] ?? "application/octet-stream" }));
+      if (ext === "pdf") {
+        content = document.createElement("iframe");
+        content.className = "doc-win-frame";
+        content.title = name;
+        content.src = url;
+      } else {
+        content = document.createElement("img");
+        content.className = "doc-win-img";
+        content.alt = name;
+        content.src = url;
+      }
+    }
+  } else {
+    content = buildDocExternal(name, scope);
   }
 
   const grip = document.createElement("div");
@@ -1329,8 +1407,14 @@ async function openDocViewer(name) {
   win.append(title, head, content, grip);
 
   // Tamaño inicial según el contenido, y en cascada para que no se tapen.
-  const w = Math.round(ext === "pdf" ? Math.min(680, innerWidth * 0.55) : Math.min(440, innerWidth * 0.4));
-  const h = Math.round(ext === "pdf" ? Math.min(720, innerHeight * 0.75) : Math.min(380, innerHeight * 0.5));
+  const w = Math.round(
+    ext === "pdf" ? Math.min(680, innerWidth * 0.55)
+    : !previewable ? Math.min(340, innerWidth * 0.4)
+    : Math.min(440, innerWidth * 0.4));
+  const h = Math.round(
+    ext === "pdf" ? Math.min(720, innerHeight * 0.75)
+    : !previewable ? Math.min(200, innerHeight * 0.3)
+    : Math.min(380, innerHeight * 0.5));
   const off = (docWinCascade++ % 8) * 26;
   win.style.width = `${w}px`;
   win.style.height = `${h}px`;
@@ -1342,21 +1426,44 @@ async function openDocViewer(name) {
     if (e.target.closest(".doc-win-resize")) return dragDocWindow(win, e, "resize");
     // El contenido y los botones se usan, no arrastran; el resto (título,
     // cabecera, bordes y padding) es asidero.
-    if (e.target.closest("iframe, pre, img, button")) return;
+    if (e.target.closest("iframe, pre, img, button, .doc-win-md")) return;
     dragDocWindow(win, e, "move");
   });
 
   document.body.appendChild(win);
-  docWindows.set(name, { win, url });
+  docWindows.set(key, { win, url });
   bringDocToFront(win);
   playSound("popup");
 }
 
-function closeDocWindow(name) {
-  const entry = docWindows.get(name);
+/** Panel para formatos sin previsualización: un aviso y un botón que abre el
+ *  documento con la aplicación por defecto del sistema (comando open_doc_external). */
+function buildDocExternal(name, scope) {
+  const box = document.createElement("div");
+  box.className = "doc-win-ext";
+  const msg = document.createElement("p");
+  msg.className = "doc-win-ext-msg";
+  msg.textContent = "Este formato no se previsualiza aquí.";
+  const btn = document.createElement("button");
+  btn.className = "btn";
+  btn.textContent = "abrir con la aplicación del sistema";
+  btn.addEventListener("click", async () => {
+    try {
+      await invoke("open_doc_external", { name, project: scope });
+      setStatus(`Abriendo «${name}»…`);
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  });
+  box.append(msg, btn);
+  return box;
+}
+
+function closeDocWindow(key) {
+  const entry = docWindows.get(key);
   if (!entry) return;
   // Fuera del registro ya: no cuenta como "la de encima" mientras sale.
-  docWindows.delete(name);
+  docWindows.delete(key);
   playSound("popup-close");
   const done = () => {
     entry.win.remove();
@@ -1378,6 +1485,361 @@ window.addEventListener("blur", () => {
     if (win) bringDocToFront(win);
   }
 });
+
+// --- Calculadora científica --------------------------------------------------------------
+//
+// El icono «calculadora» de la bandeja abre una calculadora científica flotante
+// que se arrastra por toda la app igual que las ventanas de documentos (mismo
+// aspecto, misma banda de z-index y mismo registro, así clicar cualquiera de las
+// dos la trae al frente). Solo hay una: si ya está abierta, se trae al frente.
+//
+// Funciona por expresión: los botones van componiendo una expresión (con
+// paréntesis, funciones, potencias, etc.) que se evalúa al pulsar «=». Acepta
+// teclado mientras la ventana tiene el foco. La evaluación es un pequeño parser
+// de descenso recursivo propio (nada de eval): respeta precedencia y modo
+// ángulo (DEG/RAD) para las trigonométricas.
+
+const CALC_KEY = "__calc__"; // clave propia en docWindows (no choca con docKey)
+
+/** Formatea un número para el visor: «Error» si no es finito y recorta el ruido
+ *  de coma flotante (0.1 + 0.2 → 0.3) sin arrastrar decimales infinitos. */
+function calcFormat(n) {
+  if (!Number.isFinite(n)) return "Error";
+  return parseFloat(n.toPrecision(12)).toString();
+}
+
+/** Factorial (solo enteros ≥ 0; el resto → NaN, que el visor muestra «Error»). */
+function calcFactorial(n) {
+  if (n < 0 || !Number.isInteger(n) || n > 170) return NaN;
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
+}
+
+/** Parte la expresión en tokens (números, identificadores y símbolos sueltos);
+ *  lanza si aparece un carácter que no reconoce. */
+function calcTokenize(str) {
+  const toks = [];
+  let i = 0;
+  while (i < str.length) {
+    const c = str[i];
+    if (c === " ") { i++; continue; }
+    if ((c >= "0" && c <= "9") || c === ".") {
+      let j = i + 1;
+      while (j < str.length && ((str[j] >= "0" && str[j] <= "9") || str[j] === ".")) j++;
+      toks.push({ t: "num", v: parseFloat(str.slice(i, j)) });
+      i = j;
+    } else if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z")) {
+      let j = i + 1;
+      while (j < str.length && ((str[j] >= "a" && str[j] <= "z") || (str[j] >= "A" && str[j] <= "Z"))) j++;
+      toks.push({ t: "id", v: str.slice(i, j) });
+      i = j;
+    } else if ("+-*/^!()".includes(c)) {
+      toks.push({ t: "op", v: c });
+      i++;
+    } else {
+      throw new Error("token inesperado: " + c);
+    }
+  }
+  return toks;
+}
+
+const CALC_CONSTS = { pi: Math.PI, e: Math.E };
+
+/** Funciones de una variable. Las trigonométricas directas reciben el ángulo ya
+ *  convertido a radianes; las inversas devuelven el resultado en radianes (la
+ *  conversión de/ a grados según el modo se hace en calcEval). */
+const CALC_FUNCS = {
+  sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  ln: Math.log, log: Math.log10, sqrt: Math.sqrt,
+  exp: Math.exp, abs: Math.abs,
+};
+const CALC_TRIG = ["sin", "cos", "tan"];
+const CALC_ATRIG = ["asin", "acos", "atan"];
+
+/** Evalúa la expresión con un descenso recursivo. `deg` indica si las
+ *  trigonométricas trabajan en grados. Lanza en caso de expresión mal formada. */
+function calcEval(str, deg) {
+  const toks = calcTokenize(str);
+  let pos = 0;
+  const peek = () => toks[pos];
+  const eat = (v) => {
+    const tk = toks[pos];
+    if (!tk || (v !== undefined && tk.v !== v)) throw new Error("esperaba " + v);
+    pos++;
+    return tk;
+  };
+
+  // expr := term (('+'|'-') term)*
+  function parseExpr() {
+    let v = parseTerm();
+    while (peek() && peek().t === "op" && (peek().v === "+" || peek().v === "-")) {
+      const op = eat().v;
+      const rhs = parseTerm();
+      v = op === "+" ? v + rhs : v - rhs;
+    }
+    return v;
+  }
+  // term := unary (('*'|'/'|'mod') unary)*
+  function parseTerm() {
+    let v = parseUnary();
+    while (peek() && ((peek().t === "op" && (peek().v === "*" || peek().v === "/")) ||
+                      (peek().t === "id" && peek().v === "mod"))) {
+      const op = eat().v;
+      const rhs = parseUnary();
+      v = op === "*" ? v * rhs : op === "/" ? v / rhs : v % rhs;
+    }
+    return v;
+  }
+  // unary := ('-'|'+') unary | power   (el menos unario liga MÁS flojo que «^»,
+  // así −2^2 = −(2^2) = −4, como en la convención matemática habitual)
+  function parseUnary() {
+    if (peek() && peek().t === "op" && (peek().v === "-" || peek().v === "+")) {
+      const op = eat().v;
+      const v = parseUnary();
+      return op === "-" ? -v : v;
+    }
+    return parsePower();
+  }
+  // power := postfix ('^' unary)?   (potencia, asociativa a la derecha; el
+  // exponente admite signo: 2^-2 = 0.25)
+  function parsePower() {
+    const base = parsePostfix();
+    if (peek() && peek().t === "op" && peek().v === "^") {
+      eat();
+      return base ** parseUnary();
+    }
+    return base;
+  }
+  // postfix := primary ('!')*
+  function parsePostfix() {
+    let v = parsePrimary();
+    while (peek() && peek().t === "op" && peek().v === "!") {
+      eat();
+      v = calcFactorial(v);
+    }
+    return v;
+  }
+  // primary := num | const | func '(' expr ')' | '(' expr ')'
+  function parsePrimary() {
+    const tk = peek();
+    if (!tk) throw new Error("expresión incompleta");
+    if (tk.t === "num") { eat(); return tk.v; }
+    if (tk.t === "id") {
+      eat();
+      if (tk.v in CALC_CONSTS) return CALC_CONSTS[tk.v];
+      const fn = CALC_FUNCS[tk.v];
+      if (!fn) throw new Error("desconocido: " + tk.v);
+      eat("(");
+      let arg = parseExpr();
+      eat(")");
+      if (deg && CALC_TRIG.includes(tk.v)) arg = arg * Math.PI / 180;
+      let res = fn(arg);
+      if (deg && CALC_ATRIG.includes(tk.v)) res = res * 180 / Math.PI;
+      return res;
+    }
+    if (tk.t === "op" && tk.v === "(") {
+      eat("(");
+      const v = parseExpr();
+      eat(")");
+      return v;
+    }
+    throw new Error("inesperado: " + tk.v);
+  }
+
+  const result = parseExpr();
+  if (pos !== toks.length) throw new Error("sobra: " + toks[pos].v);
+  return result;
+}
+
+function openCalcWindow() {
+  const existing = docWindows.get(CALC_KEY);
+  if (existing) return bringDocToFront(existing.win);
+
+  const win = document.createElement("section");
+  win.className = "block doc-window calc-window";
+  win.tabIndex = 0; // enfocable, para atender el teclado
+
+  const title = document.createElement("span");
+  title.className = "block-title";
+  title.textContent = "calculadora";
+
+  const head = document.createElement("div");
+  head.className = "add-row doc-win-head";
+  const close = document.createElement("button");
+  close.className = "btn";
+  close.title = "cerrar";
+  close.textContent = "✕";
+  close.addEventListener("click", () => closeDocWindow(CALC_KEY));
+  head.appendChild(close);
+
+  const screen = document.createElement("div");
+  screen.className = "calc-screen";
+  const exprEl = document.createElement("div");
+  exprEl.className = "calc-expr";
+  const outEl = document.createElement("div");
+  outEl.className = "calc-out";
+  screen.append(exprEl, outEl);
+
+  // Estado: `tokens` es la expresión como lista de piezas { d: display, p: parse };
+  // `deg` el modo ángulo; `evaluated` marca que en pantalla hay un resultado (la
+  // siguiente cifra empieza de cero, pero un operador sigue operando sobre él);
+  // `lastExpr` la expresión mostrada arriba tras «=»; `error` si la última falló.
+  const st = { tokens: [], deg: true, evaluated: false, lastExpr: "", error: false };
+  let modeBtn = null; // botón DEG/RAD, para refrescar su rótulo
+
+  const disp = () => st.tokens.map((t) => t.d).join("");
+
+  const render = () => {
+    if (st.error) { exprEl.textContent = st.lastExpr + " ="; outEl.textContent = "Error"; }
+    else if (st.evaluated) { exprEl.textContent = st.lastExpr + " ="; outEl.textContent = disp() || "0"; }
+    else { exprEl.textContent = ""; outEl.textContent = disp() || "0"; }
+    if (modeBtn) modeBtn.textContent = st.deg ? "DEG" : "RAD";
+  };
+
+  const clear = () => { st.tokens = []; st.evaluated = false; st.error = false; };
+
+  // `kind`: "val" empieza un valor (cifra, función, constante, paréntesis…) y tras
+  // un resultado arranca de cero; "op" (operadores, «!», potencia) sigue operando
+  // sobre el resultado en pantalla.
+  const insert = (tok, kind) => {
+    if (st.error) clear();
+    if (st.evaluated) {
+      if (kind === "val") st.tokens = [];
+      st.evaluated = false;
+    }
+    st.tokens.push(tok);
+  };
+
+  const backspace = () => {
+    st.error = false;
+    st.evaluated = false;
+    st.tokens.pop();
+  };
+
+  const equals = () => {
+    if (!st.tokens.length || st.evaluated) return;
+    let res;
+    try { res = calcEval(st.tokens.map((t) => t.p).join(""), st.deg); }
+    catch { res = NaN; }
+    st.lastExpr = disp();
+    if (!Number.isFinite(res)) { st.error = true; st.tokens = []; return; }
+    const s = calcFormat(res);
+    st.tokens = [{ d: s, p: s }];
+    st.evaluated = true;
+    st.error = false;
+  };
+
+  const toggleMode = () => { st.deg = !st.deg; };
+
+  // Distribución científica: 7 filas × 5 columnas. `ins` inserta una pieza;
+  // `fn` es una acción especial; `kind` distingue valor de operador (ver insert).
+  const V = "val", O = "op";
+  const num = (n) => ({ t: n, ins: { d: n, p: n }, kind: V });
+  const keys = [
+    { t: "DEG", cls: "calc-fn", fn: toggleMode, mode: true },
+    { t: "sin", cls: "calc-fn", ins: { d: "sin(", p: "sin(" }, kind: V },
+    { t: "cos", cls: "calc-fn", ins: { d: "cos(", p: "cos(" }, kind: V },
+    { t: "tan", cls: "calc-fn", ins: { d: "tan(", p: "tan(" }, kind: V },
+    { t: "⌫", cls: "calc-fn", fn: backspace },
+
+    { t: "√", cls: "calc-fn", ins: { d: "√(", p: "sqrt(" }, kind: V },
+    { t: "ln", cls: "calc-fn", ins: { d: "ln(", p: "ln(" }, kind: V },
+    { t: "log", cls: "calc-fn", ins: { d: "log(", p: "log(" }, kind: V },
+    { t: "xʸ", cls: "calc-op", ins: { d: "^", p: "^" }, kind: O },
+    { t: "C", cls: "calc-fn", fn: clear },
+
+    { t: "π", cls: "calc-fn", ins: { d: "π", p: "pi" }, kind: V },
+    { t: "(", cls: "calc-fn", ins: { d: "(", p: "(" }, kind: V },
+    { t: ")", cls: "calc-fn", ins: { d: ")", p: ")" }, kind: O },
+    { t: "x²", cls: "calc-op", ins: { d: "²", p: "^2" }, kind: O },
+    { t: "÷", cls: "calc-op", ins: { d: "÷", p: "/" }, kind: O },
+
+    { t: "e", cls: "calc-fn", ins: { d: "e", p: "e" }, kind: V },
+    num("7"), num("8"), num("9"),
+    { t: "×", cls: "calc-op", ins: { d: "×", p: "*" }, kind: O },
+
+    { t: "x!", cls: "calc-fn", ins: { d: "!", p: "!" }, kind: O },
+    num("4"), num("5"), num("6"),
+    { t: "−", cls: "calc-op", ins: { d: "−", p: "-" }, kind: O },
+
+    { t: "abs", cls: "calc-fn", ins: { d: "abs(", p: "abs(" }, kind: V },
+    num("1"), num("2"), num("3"),
+    { t: "+", cls: "calc-op", ins: { d: "+", p: "+" }, kind: O },
+
+    { t: "mod", cls: "calc-fn", ins: { d: " mod ", p: " mod " }, kind: O },
+    num("0"), num("."),
+    { t: "=", cls: "calc-eq", fn: equals },
+  ];
+  // «.» ocupa una celda y «=» otra: la fila inferior queda de 4 y el «=» se
+  // ensancha para llenar el hueco (se marca abajo con la clase calc-wide).
+  keys[keys.length - 1].wide = true;
+
+  const pad = document.createElement("div");
+  pad.className = "calc-pad";
+  keys.forEach((k) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `btn calc-key ${k.cls || ""}${k.wide ? " calc-wide" : ""}`.trim();
+    b.textContent = k.t;
+    if (k.mode) modeBtn = b;
+    const act = k.fn || (() => insert({ ...k.ins }, k.kind));
+    // No robar el foco al pulsar: así el teclado sigue llegando a la ventana.
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => { act(); render(); });
+    pad.appendChild(b);
+  });
+
+  // La calculadora tiene tamaño fijo: no lleva asidero de redimensionado.
+  win.append(title, head, screen, pad);
+  render();
+
+  // Tamaño en cascada, como las ventanas de documentos.
+  const w = 288, h = 400;
+  const off = (docWinCascade++ % 8) * 26;
+  win.style.width = `${w}px`;
+  win.style.height = `${h}px`;
+  win.style.left = `${Math.max(8, Math.round((innerWidth - w) / 2) - 90 + off)}px`;
+  win.style.top = `${Math.max(20, Math.round((innerHeight - h) / 2) - 30 + off)}px`;
+
+  win.addEventListener("pointerdown", (e) => {
+    bringDocToFront(win);
+    // Teclas y visor se usan, no arrastran; el resto (título, cabecera, bordes) sí.
+    if (e.target.closest("button, .calc-screen")) return;
+    dragDocWindow(win, e, "move");
+  });
+
+  // Teclado: solo mientras la ventana tiene el foco. Se frena la propagación de
+  // las teclas atendidas para que no disparen los atajos globales de la app.
+  const KEYMAP = {
+    "+": { d: "+", p: "+", kind: O }, "-": { d: "−", p: "-", kind: O },
+    "*": { d: "×", p: "*", kind: O }, "/": { d: "÷", p: "/", kind: O },
+    "^": { d: "^", p: "^", kind: O }, "!": { d: "!", p: "!", kind: O },
+    "(": { d: "(", p: "(", kind: V }, ")": { d: ")", p: ")", kind: O },
+    ".": { d: ".", p: ".", kind: V },
+  };
+  win.addEventListener("keydown", (e) => {
+    const k = e.key;
+    let handled = true;
+    if (k >= "0" && k <= "9") insert({ d: k, p: k }, V);
+    else if (KEYMAP[k]) insert({ d: KEYMAP[k].d, p: KEYMAP[k].p }, KEYMAP[k].kind);
+    else if (k === "Enter" || k === "=") equals();
+    else if (k === "Backspace") backspace();
+    else if (k === "Escape") closeDocWindow(CALC_KEY);
+    else if (k === "c" || k === "C") clear();
+    else handled = false;
+    if (handled) { e.preventDefault(); e.stopPropagation(); render(); }
+  });
+
+  document.body.appendChild(win);
+  docWindows.set(CALC_KEY, { win, url: null });
+  bringDocToFront(win);
+  win.focus();
+  playSound("popup");
+}
+
+$("menu-calc").addEventListener("click", openCalcWindow);
 
 // --- Boceto (pizarra Excalidraw) ---------------------------------------------------------
 //
@@ -2219,13 +2681,14 @@ document.addEventListener("keydown", (e) => {
       }
       case " ": case "Enter":
         stop();
-        if (docSel >= 0 && docs[docSel]) openDocViewer(docs[docSel]);
+        if (docSel >= 0 && docs[docSel]) openDocViewer(docs[docSel], currentDocsScope());
         return;
       case "d":
         stop();
         if (docSel >= 0 && docs[docSel]) {
           const name = docs[docSel];
-          askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name));
+          const scope = currentDocsScope();
+          askConfirm(`¿Borrar «${name}»? (definitivo, sin papelera)`, () => deleteDoc(name, scope));
         }
         return;
       case "Escape":
